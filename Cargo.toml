@@ -1,11 +1,12 @@
 [package]
-name = "nebula"
+name = "wyvern"
 version = "0.1.0"
 authors = ["nicohman <nicohman@demenses.net>"]
 edition = "2018"
-
+license="GPL-3.0"
+repository="https://git.sr.ht/~nicohman/wyvern"
 [dependencies]
-gog = { git = "https://github.com/nicohman/gog-rs" }
+gog = { git = "https://git.sr.ht/~nicohman/gogapi-rs" }
 structopt = "0.2.10"
 serde = "1.0.70"
 serde_derive = "1.0"

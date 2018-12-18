@@ -17,13 +17,13 @@ use gog::token::Token;
 use gog::Gog;
 fn main() -> Result<(), ::std::io::Error> {
     setup_panic!();
-    let mut config : Config = confy::load("nebula")?;
+    let mut config : Config = confy::load("wyvern")?;
     if config.token.is_none() {
         let token = login();
         config.token = Some(token);
     }
     config.token = Some(config.token.unwrap().refresh().unwrap());
-    confy::store("nebula", config)?;
+    confy::store("wyvern", config)?;
     Ok(())
 }
 fn login() -> Token {
