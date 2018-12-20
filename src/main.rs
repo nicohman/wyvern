@@ -42,8 +42,14 @@ fn main() -> Result<(), ::std::io::Error> {
     confy::store("wyvern", config)?;
     let args = Wyvern::from_args();
     match args {
-        List {} => {
-            list_owned(gog).unwrap();
+        List {id} => {
+            if let Some(id)  = id {
+                let details = gog.get_game_details(id).unwrap();
+                println!("Title - GameID");
+                println!("{} - {}", details.title, id);
+            } else {
+                list_owned(gog).unwrap();
+            }
         }
         Download { id } => {
             let details = gog.get_game_details(id).unwrap();
@@ -73,9 +79,9 @@ fn login() -> Token {
 }
 fn list_owned(gog: Gog) -> Result<(), Error> {
     let games = gog.get_filtered_products(FilterParams::from_one(MediaType(1)))?;
-    println!("Title - Slug - GameID");
+    println!("Title - GameID");
     for game in games {
-        println!("{} - {} - {}", game.title, game.slug, game.id);
+        println!("{} - {}", game.title, game.id);
     }
     Ok(())
 }

@@ -3,7 +3,8 @@
 pub enum Wyvern {
     #[structopt(name = "ls", about = "List all games you own")]
     List {
-
+         #[structopt(short = "i", long = "id", help = "search with id")]
+         id: Option<i64>
     },
     #[structopt(name = "down", about = "Download specific game")]
     Download {
