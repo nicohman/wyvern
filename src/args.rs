@@ -5,10 +5,14 @@ pub enum Wyvern {
     List {
          #[structopt(short = "i", long = "id", help = "search with id")]
          id: Option<i64>
+
     },
     #[structopt(name = "down", about = "Download specific game")]
     Download {
         //TODO: Add support for multiple ways of specifying game to download
-        id: i64
+        #[structopt(short = "i", long = "id", help ="download id")]
+        id: Option<i64>,
+        #[structopt(short = "s", long = "search", help ="search manually")]
+        search: Option<String>
     }
 }

@@ -51,9 +51,42 @@ fn main() -> Result<(), ::std::io::Error> {
                 list_owned(gog).unwrap();
             }
         }
-        Download { id } => {
-            let details = gog.get_game_details(id).unwrap();
-            download(gog, details).unwrap();
+        Download { id, search } => {
+            if let Some(search) = search {
+                let search_results = gog.get_filtered_products(FilterParams::from_one(Search(search)));
+                if search_results.is_ok() {
+                    let e = search_results.unwrap();
+                    for (idx, pd) in e.iter().enumerate() {
+                        println!("{}. {} - {}", idx, pd.title, pd.id);
+                    }
+                    let mut choice = String::new();
+                    loop {
+                        print!("Select a game to download:");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut choice).unwrap();                        
+                        let parsed = choice.trim().parse::<usize>();
+                        if let Ok(i) = parsed {
+                            if e.len() > i {
+                                let details = gog.get_game_details(e[i].id).unwrap();
+                                download(gog, details).unwrap();
+                                break;
+                            } else {
+                                println!("Please enter a valid number corresponding to an available download");
+                            }
+                        } else {
+                            println!("Please enter a number corresponding to an available download");
+                        }
+                    }
+                } else {
+                    println!("Could not find any games.");
+                }
+            } else if let Some(id) = id {
+                let details = gog.get_game_details(id).unwrap();
+                download(gog, details).unwrap();
+            } else {
+                println!("Did not specify a game to download");
+            }
+
         }
     };
     Ok(())
@@ -105,7 +138,7 @@ fn download(gog: Gog, game: GameDetails) -> Result<(), Error> {
             let mut fd = fs::File::create(name.clone())?;
             let mut perms = fd.metadata()?.permissions();
             perms.set_mode(0o744);
-            fd.set_permissions(perms);
+            fd.set_permissions(perms)?;
             let mut pb_read = pb.wrap_read(response);
             io::copy(&mut pb_read, &mut fd)?;
             pb.finish();
