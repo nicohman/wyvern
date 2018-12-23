@@ -100,16 +100,10 @@ fn main() -> Result<(), ::std::io::Error> {
                 println!("You don't have a steam account linked to GOG! Go to https://www.gog.com/connect to link one.");
                 return Ok(());
             } else {
-                if !quiet {
-                    println!(
-                        "Using steam account {} for linking.",
-                        linked.unwrap().user.steam_username
-                    );
-                }
                 gog.connect_scan(uid).unwrap();
             }
             match args {
-                Connect(ListConnect { claim }) => {
+                Connect(ListConnect { claim, quiet }) => {
                     let mut items = gog.connect_status(uid).unwrap().items;
                     let left_over: Vec<(String, ConnectGame)> = items
                         .into_iter()
