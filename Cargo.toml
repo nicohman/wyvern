@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["nicohman <nicohman@demenses.net>"]
 license="GPL-3.0"
 repository="https://git.sr.ht/~nicohman/wyvern"
+[[bin]]
+name = "wyvern"
+path = "src/main.rs"
 [dependencies]
 structopt = "0.2.10"
 serde = "1.0.70"

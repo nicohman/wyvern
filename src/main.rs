@@ -15,12 +15,15 @@ mod config;
 use crate::args::Wyvern;
 use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
+use crate::args::Connect::*;
 use crate::config::Config;
 use gog::error::Error;
 use gog::gog::FilterParam::*;
 use gog::gog::*;
 use gog::token::Token;
 use gog::Gog;
+use gog::gog::connect::ConnectGameStatus::*;
+use gog::gog::connect::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::fs::OpenOptions;
@@ -63,7 +66,7 @@ fn main() -> Result<(), ::std::io::Error> {
                     loop {
                         print!("Select a game to download:");
                         io::stdout().flush().unwrap();
-                        io::stdin().read_line(&mut choice).unwrap();                        
+                        io::stdin().read_line(&mut choice).unwrap();
                         let parsed = choice.trim().parse::<usize>();
                         if let Ok(i) = parsed {
                             if e.len() > i {
@@ -87,11 +90,39 @@ fn main() -> Result<(), ::std::io::Error> {
                 println!("Did not specify a game to download");
             }
 
+        },
+        Connect { .. } => {
+            let uid : i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
+            let linked = gog.connect_account(uid);
+            if linked.is_err() {
+                println!("You don't have a steam account linked to GOG! Go to https://www.gog.com/connect to link one.");
+                return Ok(());
+            } else {
+                println!("Using steam account {} for linking.", linked.unwrap().user.steam_username);
+                gog.connect_scan(uid).unwrap();
+            }
+            match args {
+                Connect(ListConnect { claim }) => {
+                    let mut items = gog.connect_status(uid).unwrap().items;
+                    let left_over : Vec<(String, ConnectGame)>= items.into_iter().filter_map(|x| {
+                        if !claim || x.1.status == READY_TO_LINK {
+                            let details = gog.product(vec![x.1.id],vec![]);
+                            if details.is_ok() {
+                                println!("{} - {:?}", details.unwrap()[0].title, x.1.status);
+                                return None;
+                            }
+                        }
+                        return Some(x);
+                    }).collect();
+                    println!("{} items not shown due to options", left_over.len());
+                },
+                _ => println!("Tell someone about this, because it should not be happening")
+            }
         }
     };
     Ok(())
 }
-fn login() -> Token {
+pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
     println!("https://login.gog.com/auth?client_id=46899977096215655&layout=client2%22&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code");
     io::stdout().flush().unwrap();
