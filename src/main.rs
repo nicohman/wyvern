@@ -12,18 +12,18 @@ extern crate gog;
 extern crate indicatif;
 mod args;
 mod config;
+use crate::args::Connect::*;
 use crate::args::Wyvern;
 use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
-use crate::args::Connect::*;
 use crate::config::Config;
 use gog::error::Error;
+use gog::gog::connect::ConnectGameStatus::*;
+use gog::gog::connect::*;
 use gog::gog::FilterParam::*;
 use gog::gog::*;
 use gog::token::Token;
 use gog::Gog;
-use gog::gog::connect::ConnectGameStatus::*;
-use gog::gog::connect::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::fs::OpenOptions;
@@ -45,8 +45,8 @@ fn main() -> Result<(), ::std::io::Error> {
     confy::store("wyvern", config)?;
     let args = Wyvern::from_args();
     match args {
-        List {id} => {
-            if let Some(id)  = id {
+        List { id } => {
+            if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
                 println!("Title - GameID");
                 println!("{} - {}", details.title, id);
@@ -56,7 +56,8 @@ fn main() -> Result<(), ::std::io::Error> {
         }
         Download { id, search } => {
             if let Some(search) = search {
-                let search_results = gog.get_filtered_products(FilterParams::from_one(Search(search)));
+                let search_results =
+                    gog.get_filtered_products(FilterParams::from_one(Search(search)));
                 if search_results.is_ok() {
                     let e = search_results.unwrap();
                     for (idx, pd) in e.iter().enumerate() {
@@ -77,7 +78,9 @@ fn main() -> Result<(), ::std::io::Error> {
                                 println!("Please enter a valid number corresponding to an available download");
                             }
                         } else {
-                            println!("Please enter a number corresponding to an available download");
+                            println!(
+                                "Please enter a number corresponding to an available download"
+                            );
                         }
                     }
                 } else {
@@ -89,34 +92,47 @@ fn main() -> Result<(), ::std::io::Error> {
             } else {
                 println!("Did not specify a game to download");
             }
-
-        },
+        }
         Connect { .. } => {
-            let uid : i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
+            let uid: i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
             let linked = gog.connect_account(uid);
             if linked.is_err() {
                 println!("You don't have a steam account linked to GOG! Go to https://www.gog.com/connect to link one.");
                 return Ok(());
             } else {
-                println!("Using steam account {} for linking.", linked.unwrap().user.steam_username);
+                if !quiet {
+                    println!(
+                        "Using steam account {} for linking.",
+                        linked.unwrap().user.steam_username
+                    );
+                }
                 gog.connect_scan(uid).unwrap();
             }
             match args {
                 Connect(ListConnect { claim }) => {
                     let mut items = gog.connect_status(uid).unwrap().items;
-                    let left_over : Vec<(String, ConnectGame)>= items.into_iter().filter_map(|x| {
-                        if !claim || x.1.status == READY_TO_LINK {
-                            let details = gog.product(vec![x.1.id],vec![]);
-                            if details.is_ok() {
-                                println!("{} - {:?}", details.unwrap()[0].title, x.1.status);
-                                return None;
+                    let left_over: Vec<(String, ConnectGame)> = items
+                        .into_iter()
+                        .filter_map(|x| {
+                            if !claim || x.1.status == READY_TO_LINK {
+                                let details = gog.product(vec![x.1.id], vec![]);
+                                if details.is_ok() {
+                                    println!("{} - {:?}", details.unwrap()[0].title, x.1.status);
+                                    return None;
+                                }
                             }
-                        }
-                        return Some(x);
-                    }).collect();
-                    println!("{} items not shown due to options", left_over.len());
-                },
-                _ => println!("Tell someone about this, because it should not be happening")
+                            return Some(x);
+                        })
+                        .collect();
+                    if !quiet {
+                        println!("{} items not shown due to options", left_over.len());
+                    }
+                }
+                Connect(ClaimAll {}) => {
+                    gog.connect_claim(uid).unwrap();
+                    println!("Claimed all available games");
+                }
+                _ => println!("Tell someone about this, because it should not be happening"),
             }
         }
     };
@@ -159,13 +175,20 @@ fn download(gog: Gog, game: GameDetails) -> Result<(), Error> {
         let mut responses = gog.download_game(l_downloads);
         let count = responses.len();
         for (idx, mut response) in responses.iter_mut().enumerate() {
-            let total_size = response.headers().get("Content-Length").unwrap().to_str().unwrap().parse().unwrap();
+            let total_size = response
+                .headers()
+                .get("Content-Length")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap();
             let pb = ProgressBar::new(total_size);
             pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .progress_chars("#>-"));
             let name = names[idx].clone();
-            println!("Downloading {}, {} of {}", name, idx+1, count);
+            println!("Downloading {}, {} of {}", name, idx + 1, count);
             let mut fd = fs::File::create(name.clone())?;
             let mut perms = fd.metadata()?.permissions();
             perms.set_mode(0o744);
