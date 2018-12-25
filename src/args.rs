@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "wyvern")]
 pub enum Wyvern {
@@ -15,6 +16,12 @@ pub enum Wyvern {
     },
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),
+    #[structopt(name = "install", about = "Install a GOG game from an installer")]
+    Install {
+        installer_name: String,
+        #[structopt(parse(from_os_str))]
+        path: PathBuf
+    }
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {

@@ -6,6 +6,7 @@ extern crate serde_derive;
 extern crate serde;
 extern crate serde_json;
 use structopt::StructOpt;
+extern crate zip;
 #[macro_use]
 extern crate human_panic;
 extern crate gog;
@@ -17,16 +18,18 @@ use crate::args::Wyvern;
 use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
 use crate::config::Config;
-use gog::error::Error;
+use gog::extract::*;
 use gog::gog::connect::ConnectGameStatus::*;
 use gog::gog::connect::*;
 use gog::gog::FilterParam::*;
 use gog::gog::*;
 use gog::token::Token;
+use gog::Error;
 use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::fs::OpenOptions;
+use std::fs::*;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -91,6 +94,53 @@ fn main() -> Result<(), ::std::io::Error> {
                 download(gog, details).unwrap();
             } else {
                 println!("Did not specify a game to download");
+            }
+        }
+        Install {
+            installer_name,
+            path,
+        } => {
+            let mut installer = File::open(&installer_name);
+            if installer.is_ok() {
+                extract(
+                    &mut installer.unwrap(),
+                    "/tmp",
+                    ToExtract {
+                        unpacker: false,
+                        mojosetup: false,
+                        data: true,
+                    },
+                )
+                .unwrap();
+                let mut file = File::open("/tmp/data.zip").unwrap();
+                let mut archive = zip::ZipArchive::new(file).unwrap();
+                for i in 0..archive.len() {
+                    let mut file = archive.by_index(i).unwrap();
+                    let outpath = path.join(file.sanitized_name());
+
+                    if (&*file.name()).ends_with('/') {
+                        println!(
+                            "File {} extracted to \"{}\"",
+                            i,
+                            outpath.as_path().display()
+                        );
+                        fs::create_dir_all(&outpath).unwrap();
+                    } else {
+                        if let Some(p) = outpath.parent() {
+                            if !p.exists() {
+                                fs::create_dir_all(&p).unwrap();
+                            }
+                        }
+                        let mut outfile = fs::File::create(&outpath).unwrap();
+                        io::copy(&mut file, &mut outfile).unwrap();
+                    }
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(mode) = file.unix_mode() {
+                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+                    }
+                }
+            } else {
+                println!("File {} does not exist", installer_name)
             }
         }
         Connect { .. } => {
