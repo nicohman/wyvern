@@ -13,6 +13,9 @@ pub enum Wyvern {
         id: Option<i64>,
         #[structopt(short = "s", long = "search", help = "search manually")]
         search: Option<String>,
+        #[structopt(parse(from_os_str))]
+        #[structopt(short = "n", long = "install", help = "install downloaded game to path")]
+        install_after: Option<PathBuf>
     },
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),

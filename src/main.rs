@@ -34,6 +34,7 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 fn main() -> Result<(), ::std::io::Error> {
     #[cfg(not(debug_assertions))]
     setup_panic!();
@@ -57,7 +58,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 list_owned(gog).unwrap();
             }
         }
-        Download { id, search } => {
+        Download { id, search , install_after} => {
             if let Some(search) = search {
                 let search_results =
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
@@ -75,7 +76,12 @@ fn main() -> Result<(), ::std::io::Error> {
                         if let Ok(i) = parsed {
                             if e.len() > i {
                                 let details = gog.get_game_details(e[i].id).unwrap();
-                                download(gog, details).unwrap();
+                                let name = download(gog, details).unwrap();
+                    if install_after.is_some() {
+                        println!("Installing game");
+                        let mut installer = fs::File::open(name).unwrap();
+                        install(&mut installer, install_after.unwrap());
+                     }
                                 break;
                             } else {
                                 println!("Please enter a valid number corresponding to an available download");
@@ -91,7 +97,12 @@ fn main() -> Result<(), ::std::io::Error> {
                 }
             } else if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
-                download(gog, details).unwrap();
+                let name = download(gog, details).unwrap();
+                    if install_after.is_some() {
+                        println!("Installing game");
+                        let mut installer = fs::File::open(name).unwrap();
+                        install(&mut installer, install_after.unwrap());
+                     }
             } else {
                 println!("Did not specify a game to download");
             }
@@ -102,43 +113,7 @@ fn main() -> Result<(), ::std::io::Error> {
         } => {
             let mut installer = File::open(&installer_name);
             if installer.is_ok() {
-                extract(
-                    &mut installer.unwrap(),
-                    "/tmp",
-                    ToExtract {
-                        unpacker: false,
-                        mojosetup: false,
-                        data: true,
-                    },
-                )
-                .unwrap();
-                let mut file = File::open("/tmp/data.zip").unwrap();
-                let mut archive = zip::ZipArchive::new(file).unwrap();
-                for i in 0..archive.len() {
-                    let mut file = archive.by_index(i).unwrap();
-                    let outpath = path.join(file.sanitized_name());
-
-                    if (&*file.name()).ends_with('/') {
-                        println!(
-                            "File {} extracted to \"{}\"",
-                            i,
-                            outpath.as_path().display()
-                        );
-                        fs::create_dir_all(&outpath).unwrap();
-                    } else {
-                        if let Some(p) = outpath.parent() {
-                            if !p.exists() {
-                                fs::create_dir_all(&p).unwrap();
-                            }
-                        }
-                        let mut outfile = fs::File::create(&outpath).unwrap();
-                        io::copy(&mut file, &mut outfile).unwrap();
-                    }
-                    use std::os::unix::fs::PermissionsExt;
-                    if let Some(mode) = file.unix_mode() {
-                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
-                    }
-                }
+                install(&mut installer.unwrap(), path);
             } else {
                 println!("File {} does not exist", installer_name)
             }
@@ -182,6 +157,46 @@ fn main() -> Result<(), ::std::io::Error> {
     };
     Ok(())
 }
+fn install (installer: &mut File, path: PathBuf) {
+                extract(
+                    installer,
+                    "/tmp",
+                    ToExtract {
+                        unpacker: false,
+                        mojosetup: false,
+                        data: true,
+                    },
+                )
+                .unwrap();
+                let mut file = File::open("/tmp/data.zip").unwrap();
+                let mut archive = zip::ZipArchive::new(file).unwrap();
+                for i in 0..archive.len() {
+                    let mut file = archive.by_index(i).unwrap();
+                    let outpath = path.join(file.sanitized_name());
+
+                    if (&*file.name()).ends_with('/') {
+                        println!(
+                            "File {} extracted to \"{}\"",
+                            i,
+                            outpath.as_path().display()
+                        );
+                        fs::create_dir_all(&outpath).unwrap();
+                    } else {
+                        if let Some(p) = outpath.parent() {
+                            if !p.exists() {
+                                fs::create_dir_all(&p).unwrap();
+                            }
+                        }
+                        let mut outfile = fs::File::create(&outpath).unwrap();
+                        io::copy(&mut file, &mut outfile).unwrap();
+                    }
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(mode) = file.unix_mode() {
+                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+                    }
+                }
+
+}
 pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
     println!("https://login.gog.com/auth?client_id=46899977096215655&layout=client2%22&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code");
@@ -209,7 +224,7 @@ fn list_owned(gog: Gog) -> Result<(), Error> {
     }
     Ok(())
 }
-fn download(gog: Gog, game: GameDetails) -> Result<(), Error> {
+fn download(gog: Gog, game: GameDetails) -> Result<String, Error> {
     if game.downloads.linux.is_some() {
         let l_downloads = game.downloads.linux.unwrap();
         let mut names = vec![];
@@ -242,9 +257,10 @@ fn download(gog: Gog, game: GameDetails) -> Result<(), Error> {
             pb.finish();
         }
         println!("Done downloading!");
+        return Ok(names[0].clone());
     } else {
         // TODO: Add capability for windows downloads
         println!("This game does not support linux!");
     }
-    Ok(())
+    Ok(String::new())
 }
