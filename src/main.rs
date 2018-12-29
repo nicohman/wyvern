@@ -172,7 +172,10 @@ fn install (installer: &mut File, path: PathBuf) {
                 let mut archive = zip::ZipArchive::new(file).unwrap();
                 for i in 0..archive.len() {
                     let mut file = archive.by_index(i).unwrap();
-                    let outpath = path.join(file.sanitized_name());
+                    let filtered_path = file.sanitized_name().to_str().unwrap().replace("/noarch", "").replace("data/","").to_owned();
+                    //Extract only files for the game itself
+                    if filtered_path.contains("game") {
+                    let outpath = path.join(PathBuf::from(filtered_path));
 
                     if (&*file.name()).ends_with('/') {
                         println!(
@@ -187,6 +190,7 @@ fn install (installer: &mut File, path: PathBuf) {
                                 fs::create_dir_all(&p).unwrap();
                             }
                         }
+                        println!("{:?}", outpath);
                         let mut outfile = fs::File::create(&outpath).unwrap();
                         io::copy(&mut file, &mut outfile).unwrap();
                     }
@@ -195,7 +199,7 @@ fn install (installer: &mut File, path: PathBuf) {
                         fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
                     }
                 }
-
+                }
 }
 pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
