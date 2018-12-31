@@ -19,10 +19,7 @@ use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
 use crate::config::Config;
 use gog::extract::*;
-use gog::gog::connect::ConnectGameStatus::*;
-use gog::gog::connect::*;
-use gog::gog::FilterParam::*;
-use gog::gog::*;
+use gog::gog::{connect::*, connect::ConnectGameStatus::*, FilterParam::*, *};
 use gog::token::Token;
 use gog::Error;
 use gog::Gog;
@@ -76,7 +73,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         if let Ok(i) = parsed {
                             if e.len() > i {
                                 let details = gog.get_game_details(e[i].id).unwrap();
-                                let name = download(gog, details).unwrap();
+                                let name = download_prep(gog, details).unwrap();
                     if install_after.is_some() {
                         println!("Installing game");
                         let mut installer = fs::File::open(name).unwrap();
@@ -97,12 +94,13 @@ fn main() -> Result<(), ::std::io::Error> {
                 }
             } else if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
-                let name = download(gog, details).unwrap();
-                    if install_after.is_some() {
+                let name = download_prep(gog, details).unwrap();
+                  if install_after.is_some() {
                         println!("Installing game");
                         let mut installer = fs::File::open(name).unwrap();
                         install(&mut installer, install_after.unwrap());
                      }
+
             } else {
                 println!("Did not specify a game to download");
             }
@@ -117,7 +115,7 @@ fn main() -> Result<(), ::std::io::Error> {
             } else {
                 println!("File {} does not exist", installer_name)
             }
-        }
+        },
         Connect { .. } => {
             let uid: i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
             let linked = gog.connect_account(uid);
@@ -157,6 +155,33 @@ fn main() -> Result<(), ::std::io::Error> {
     };
     Ok(())
 }
+fn download_prep(gog: Gog, details: GameDetails) -> Result<String, Error> {
+                if details.downloads.linux.is_some() {
+                let name = download(gog, details.downloads.linux.unwrap()).unwrap();
+                return Ok(name);
+                  } else {
+                    let mut choice = String::new();
+                    loop {
+                        println!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut choice).unwrap();
+                        match choice.to_lowercase().as_str() {
+                            "y" =>  {
+                                println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
+                                let name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                                return Ok(name);
+                            },
+                            "n" => {
+                                println!("No suitable downloads found. Exiting");
+                                std::process::exit(0);
+                            },
+                            _ => println!("Please enter y or n to proceed."),
+                        }
+                    }
+                    
+                }
+
+}
 fn install (installer: &mut File, path: PathBuf) {
                 extract(
                     installer,
@@ -169,6 +194,7 @@ fn install (installer: &mut File, path: PathBuf) {
                 )
                 .unwrap();
                 let mut file = File::open("/tmp/data.zip").unwrap();
+                // Extract code taken mostly from zip example
                 let mut archive = zip::ZipArchive::new(file).unwrap();
                 for i in 0..archive.len() {
                     let mut file = archive.by_index(i).unwrap();
@@ -228,14 +254,12 @@ fn list_owned(gog: Gog) -> Result<(), Error> {
     }
     Ok(())
 }
-fn download(gog: Gog, game: GameDetails) -> Result<String, Error> {
-    if game.downloads.linux.is_some() {
-        let l_downloads = game.downloads.linux.unwrap();
+fn download(gog: Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Error> {
         let mut names = vec![];
-        for download in l_downloads.iter() {
+        for download in downloads.iter() {
             names.push(download.name.clone());
         }
-        let mut responses = gog.download_game(l_downloads);
+        let mut responses = gog.download_game(downloads);
         let count = responses.len();
         for (idx, mut response) in responses.iter_mut().enumerate() {
             let total_size = response
@@ -262,9 +286,4 @@ fn download(gog: Gog, game: GameDetails) -> Result<String, Error> {
         }
         println!("Done downloading!");
         return Ok(names[0].clone());
-    } else {
-        // TODO: Add capability for windows downloads
-        println!("This game does not support linux!");
-    }
-    Ok(String::new())
 }
