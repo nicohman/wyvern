@@ -32,7 +32,9 @@ pub enum Wyvern {
     #[structopt(name = "update", about = "Update a game if there is an update available")]
     Update {
         #[structopt(parse(from_os_str))]
-        path: Option<PathBuf>
+        path: Option<PathBuf>,
+        #[structopt(short = "f", long = "force", help = "Force updating even if unneeded")]
+        force: bool
     }
 }
 #[derive(StructOpt, Debug)]

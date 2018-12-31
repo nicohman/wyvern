@@ -128,7 +128,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 println!("File {} does not exist", installer_name)
             }
         }
-        Update { mut path } => {
+        Update { mut path, force } => {
             if path.is_none() {
                 path = Some(PathBuf::from(".".to_string()));
             }
@@ -150,9 +150,12 @@ fn main() -> Result<(), ::std::io::Error> {
                     let downloads = details.downloads.linux.unwrap();
                     let current_version = regex.captures(&(downloads[0].version.clone().unwrap())).unwrap()[1].trim().to_string();
                     println!("Installed version : {}. Version Online: {}", version, current_version);
-                    if version == current_version {
+                    if version == current_version && !force {
                         println!("No newer version to update to. Sorry!");
                     } else {
+                        if force && version == current_version {
+                            println!("Forcing reinstall due to --force option.");
+                        }
                         println!("Updating {} to version {}", name, current_version);
                         let name = download(gog, downloads).unwrap();
                         println!("Installing.");
@@ -270,7 +273,6 @@ fn install(installer: &mut File, path: PathBuf) {
         //Extract only files for the game itself
         if filtered_path.contains("game") {
             let outpath = path.join(PathBuf::from(filtered_path));
-
             if (&*file.name()).ends_with('/') {
                 fs::create_dir_all(&outpath).unwrap();
             } else {
