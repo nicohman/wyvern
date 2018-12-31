@@ -15,7 +15,11 @@ pub enum Wyvern {
         search: Option<String>,
         #[structopt(parse(from_os_str))]
         #[structopt(short = "n", long = "install", help = "install downloaded game to path")]
-        install_after: Option<PathBuf>
+        install_after: Option<PathBuf>,
+        #[structopt(short = "w", long = "windows-auto", help = "Download windows version if no linux is available")]
+        windows_auto: bool,
+        #[structopt(long = "force-windows", help = "Force downloading windows version")]
+        windows_force:bool
     },
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),

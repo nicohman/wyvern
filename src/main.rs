@@ -36,6 +36,7 @@ fn main() -> Result<(), ::std::io::Error> {
     #[cfg(not(debug_assertions))]
     setup_panic!();
     let mut config: Config = confy::load("wyvern")?;
+    let args = Wyvern::from_args();
     if config.token.is_none() {
         let token = login();
         config.token = Some(token);
@@ -44,7 +45,7 @@ fn main() -> Result<(), ::std::io::Error> {
     print!("");
     let gog = Gog::new(config.token.clone().unwrap());
     confy::store("wyvern", config)?;
-    let args = Wyvern::from_args();
+    
     match args {
         List { id } => {
             if let Some(id) = id {
@@ -55,7 +56,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 list_owned(gog).unwrap();
             }
         }
-        Download { id, search , install_after} => {
+        Download { id, search , install_after, windows_auto, windows_force} => {
             if let Some(search) = search {
                 let search_results =
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
@@ -73,8 +74,8 @@ fn main() -> Result<(), ::std::io::Error> {
                         if let Ok(i) = parsed {
                             if e.len() > i {
                                 let details = gog.get_game_details(e[i].id).unwrap();
-                                let name = download_prep(gog, details).unwrap();
-                    if install_after.is_some() {
+                                let (name, downloaded_windows) = download_prep(gog, details, windows_auto, windows_force).unwrap();
+                    if install_after.is_some() && !downloaded_windows {
                         println!("Installing game");
                         let mut installer = fs::File::open(name).unwrap();
                         install(&mut installer, install_after.unwrap());
@@ -94,15 +95,16 @@ fn main() -> Result<(), ::std::io::Error> {
                 }
             } else if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
-                let name = download_prep(gog, details).unwrap();
-                  if install_after.is_some() {
+                let (name, downloaded_windows) = download_prep(gog, details, windows_auto, windows_force).unwrap();
+
+                  if install_after.is_some() && !downloaded_windows {
                         println!("Installing game");
                         let mut installer = fs::File::open(name).unwrap();
                         install(&mut installer, install_after.unwrap());
                      }
 
             } else {
-                println!("Did not specify a game to download");
+                println!("Did not specify a game to download. Exiting.");
             }
         }
         Install {
@@ -155,11 +157,12 @@ fn main() -> Result<(), ::std::io::Error> {
     };
     Ok(())
 }
-fn download_prep(gog: Gog, details: GameDetails) -> Result<String, Error> {
-                if details.downloads.linux.is_some() {
+fn download_prep(gog: Gog, details: GameDetails, windows_auto:bool, windows_force: bool) -> Result<(String, bool), Error> {
+                if details.downloads.linux.is_some() && !windows_force {
                 let name = download(gog, details.downloads.linux.unwrap()).unwrap();
-                return Ok(name);
+                return Ok((name, false));
                   } else {
+                      if !windows_auto && !windows_force {
                     let mut choice = String::new();
                     loop {
                         println!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
@@ -169,7 +172,7 @@ fn download_prep(gog: Gog, details: GameDetails) -> Result<String, Error> {
                             "y" =>  {
                                 println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
                                 let name = download(gog, details.downloads.windows.unwrap()).unwrap();
-                                return Ok(name);
+                                return Ok((name, true));
                             },
                             "n" => {
                                 println!("No suitable downloads found. Exiting");
@@ -179,7 +182,14 @@ fn download_prep(gog: Gog, details: GameDetails) -> Result<String, Error> {
                         }
                     }
                     
+                } else {
+                    if !windows_force {
+                    println!("No linux version available. Downloading windows version.");
+                    }
+                    let name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                    return Ok((name, true));
                 }
+                  }
 
 }
 fn install (installer: &mut File, path: PathBuf) {
