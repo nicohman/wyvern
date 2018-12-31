@@ -28,6 +28,11 @@ pub enum Wyvern {
         installer_name: String,
         #[structopt(parse(from_os_str))]
         path: PathBuf
+    },
+    #[structopt(name = "update", about = "Update a game if there is an update available")]
+    Update {
+        #[structopt(parse(from_os_str))]
+        path: Option<PathBuf>
     }
 }
 #[derive(StructOpt, Debug)]

@@ -11,6 +11,8 @@ extern crate zip;
 extern crate human_panic;
 extern crate gog;
 extern crate indicatif;
+extern crate regex;
+use regex::Regex;
 mod args;
 mod config;
 use crate::args::Connect::*;
@@ -19,7 +21,7 @@ use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
 use crate::config::Config;
 use gog::extract::*;
-use gog::gog::{connect::*, connect::ConnectGameStatus::*, FilterParam::*, *};
+use gog::gog::{connect::ConnectGameStatus::*, connect::*, FilterParam::*, *};
 use gog::token::Token;
 use gog::Error;
 use gog::Gog;
@@ -45,7 +47,7 @@ fn main() -> Result<(), ::std::io::Error> {
     print!("");
     let gog = Gog::new(config.token.clone().unwrap());
     confy::store("wyvern", config)?;
-    
+
     match args {
         List { id } => {
             if let Some(id) = id {
@@ -56,7 +58,13 @@ fn main() -> Result<(), ::std::io::Error> {
                 list_owned(gog).unwrap();
             }
         }
-        Download { id, search , install_after, windows_auto, windows_force} => {
+        Download {
+            id,
+            search,
+            install_after,
+            windows_auto,
+            windows_force,
+        } => {
             if let Some(search) = search {
                 let search_results =
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
@@ -74,12 +82,14 @@ fn main() -> Result<(), ::std::io::Error> {
                         if let Ok(i) = parsed {
                             if e.len() > i {
                                 let details = gog.get_game_details(e[i].id).unwrap();
-                                let (name, downloaded_windows) = download_prep(gog, details, windows_auto, windows_force).unwrap();
-                    if install_after.is_some() && !downloaded_windows {
-                        println!("Installing game");
-                        let mut installer = fs::File::open(name).unwrap();
-                        install(&mut installer, install_after.unwrap());
-                     }
+                                let (name, downloaded_windows) =
+                                    download_prep(gog, details, windows_auto, windows_force)
+                                        .unwrap();
+                                if install_after.is_some() && !downloaded_windows {
+                                    println!("Installing game");
+                                    let mut installer = fs::File::open(name).unwrap();
+                                    install(&mut installer, install_after.unwrap());
+                                }
                                 break;
                             } else {
                                 println!("Please enter a valid number corresponding to an available download");
@@ -95,14 +105,14 @@ fn main() -> Result<(), ::std::io::Error> {
                 }
             } else if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
-                let (name, downloaded_windows) = download_prep(gog, details, windows_auto, windows_force).unwrap();
+                let (name, downloaded_windows) =
+                    download_prep(gog, details, windows_auto, windows_force).unwrap();
 
-                  if install_after.is_some() && !downloaded_windows {
-                        println!("Installing game");
-                        let mut installer = fs::File::open(name).unwrap();
-                        install(&mut installer, install_after.unwrap());
-                     }
-
+                if install_after.is_some() && !downloaded_windows {
+                    println!("Installing game");
+                    let mut installer = fs::File::open(name).unwrap();
+                    install(&mut installer, install_after.unwrap());
+                }
             } else {
                 println!("Did not specify a game to download. Exiting.");
             }
@@ -117,7 +127,46 @@ fn main() -> Result<(), ::std::io::Error> {
             } else {
                 println!("File {} does not exist", installer_name)
             }
-        },
+        }
+        Update { mut path } => {
+            if path.is_none() {
+                path = Some(PathBuf::from(".".to_string()));
+            }
+            let path = path.unwrap();
+
+            let game_info_path = path.clone().join("gameinfo");
+            println!("{:?}", game_info_path);
+            if let Ok(mut gameinfo) = File::open(game_info_path) {
+                let regex = Regex::new(r"(.*) \(gog").unwrap();
+                let mut ginfo = String::new();
+                gameinfo.read_to_string(&mut ginfo).unwrap();
+                let mut lines = ginfo.trim().lines();
+                let name = lines.next().unwrap().to_string();
+                let version = lines.last().unwrap().trim().to_string();
+                let product =
+                    gog.get_filtered_products(FilterParams::from_one(Search(name.clone())));
+                if product.is_ok() {
+                    let details = gog.get_game_details(product.unwrap()[0].id).unwrap();
+                    let downloads = details.downloads.linux.unwrap();
+                    let current_version = regex.captures(&(downloads[0].version.clone().unwrap())).unwrap()[1].trim().to_string();
+                    println!("Installed version : {}. Version Online: {}", version, current_version);
+                    if version == current_version {
+                        println!("No newer version to update to. Sorry!");
+                    } else {
+                        println!("Updating {} to version {}", name, current_version);
+                        let name = download(gog, downloads).unwrap();
+                        println!("Installing.");
+                        let mut installer = File::open(name).unwrap();
+                        install(&mut installer, path);
+                        println!("Game finished updating!");
+                    }
+                } else {
+                    println!("Can't find game {} in your library.", name);
+                }
+            } else {
+                println!("Game installation missing a gameinfo file to check for update with.");
+            }
+        }
         Connect { .. } => {
             let uid: i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
             let linked = gog.connect_account(uid);
@@ -157,85 +206,88 @@ fn main() -> Result<(), ::std::io::Error> {
     };
     Ok(())
 }
-fn download_prep(gog: Gog, details: GameDetails, windows_auto:bool, windows_force: bool) -> Result<(String, bool), Error> {
-                if details.downloads.linux.is_some() && !windows_force {
-                let name = download(gog, details.downloads.linux.unwrap()).unwrap();
-                return Ok((name, false));
-                  } else {
-                      if !windows_auto && !windows_force {
-                    let mut choice = String::new();
-                    loop {
-                        println!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
-                        io::stdout().flush().unwrap();
-                        io::stdin().read_line(&mut choice).unwrap();
-                        match choice.to_lowercase().as_str() {
-                            "y" =>  {
-                                println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
-                                let name = download(gog, details.downloads.windows.unwrap()).unwrap();
-                                return Ok((name, true));
-                            },
-                            "n" => {
-                                println!("No suitable downloads found. Exiting");
-                                std::process::exit(0);
-                            },
-                            _ => println!("Please enter y or n to proceed."),
-                        }
+fn download_prep(
+    gog: Gog,
+    details: GameDetails,
+    windows_auto: bool,
+    windows_force: bool,
+) -> Result<(String, bool), Error> {
+    if details.downloads.linux.is_some() && !windows_force {
+        let name = download(gog, details.downloads.linux.unwrap()).unwrap();
+        return Ok((name, false));
+    } else {
+        if !windows_auto && !windows_force {
+            let mut choice = String::new();
+            loop {
+                println!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
+                io::stdout().flush().unwrap();
+                io::stdin().read_line(&mut choice).unwrap();
+                match choice.to_lowercase().as_str() {
+                    "y" => {
+                        println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
+                        let name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                        return Ok((name, true));
                     }
-                    
-                } else {
-                    if !windows_force {
-                    println!("No linux version available. Downloading windows version.");
+                    "n" => {
+                        println!("No suitable downloads found. Exiting");
+                        std::process::exit(0);
                     }
-                    let name = download(gog, details.downloads.windows.unwrap()).unwrap();
-                    return Ok((name, true));
+                    _ => println!("Please enter y or n to proceed."),
                 }
-                  }
-
+            }
+        } else {
+            if !windows_force {
+                println!("No linux version available. Downloading windows version.");
+            }
+            let name = download(gog, details.downloads.windows.unwrap()).unwrap();
+            return Ok((name, true));
+        }
+    }
 }
-fn install (installer: &mut File, path: PathBuf) {
-                extract(
-                    installer,
-                    "/tmp",
-                    ToExtract {
-                        unpacker: false,
-                        mojosetup: false,
-                        data: true,
-                    },
-                )
-                .unwrap();
-                let mut file = File::open("/tmp/data.zip").unwrap();
-                // Extract code taken mostly from zip example
-                let mut archive = zip::ZipArchive::new(file).unwrap();
-                for i in 0..archive.len() {
-                    let mut file = archive.by_index(i).unwrap();
-                    let filtered_path = file.sanitized_name().to_str().unwrap().replace("/noarch", "").replace("data/","").to_owned();
-                    //Extract only files for the game itself
-                    if filtered_path.contains("game") {
-                    let outpath = path.join(PathBuf::from(filtered_path));
+fn install(installer: &mut File, path: PathBuf) {
+    extract(
+        installer,
+        "/tmp",
+        ToExtract {
+            unpacker: false,
+            mojosetup: false,
+            data: true,
+        },
+    )
+    .unwrap();
+    let mut file = File::open("/tmp/data.zip").unwrap();
+    // Extract code taken mostly from zip example
+    let mut archive = zip::ZipArchive::new(file).unwrap();
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).unwrap();
+        let filtered_path = file
+            .sanitized_name()
+            .to_str()
+            .unwrap()
+            .replace("/noarch", "")
+            .replace("data/", "")
+            .to_owned();
+        //Extract only files for the game itself
+        if filtered_path.contains("game") {
+            let outpath = path.join(PathBuf::from(filtered_path));
 
-                    if (&*file.name()).ends_with('/') {
-                        println!(
-                            "File {} extracted to \"{}\"",
-                            i,
-                            outpath.as_path().display()
-                        );
-                        fs::create_dir_all(&outpath).unwrap();
-                    } else {
-                        if let Some(p) = outpath.parent() {
-                            if !p.exists() {
-                                fs::create_dir_all(&p).unwrap();
-                            }
-                        }
-                        println!("{:?}", outpath);
-                        let mut outfile = fs::File::create(&outpath).unwrap();
-                        io::copy(&mut file, &mut outfile).unwrap();
-                    }
-                    use std::os::unix::fs::PermissionsExt;
-                    if let Some(mode) = file.unix_mode() {
-                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+            if (&*file.name()).ends_with('/') {
+                fs::create_dir_all(&outpath).unwrap();
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        fs::create_dir_all(&p).unwrap();
                     }
                 }
-                }
+                let mut outfile = fs::File::create(&outpath).unwrap();
+                io::copy(&mut file, &mut outfile).unwrap();
+            }
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(mode) = file.unix_mode() {
+                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+            }
+        }
+    }
 }
 pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
@@ -265,35 +317,35 @@ fn list_owned(gog: Gog) -> Result<(), Error> {
     Ok(())
 }
 fn download(gog: Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Error> {
-        let mut names = vec![];
-        for download in downloads.iter() {
-            names.push(download.name.clone());
-        }
-        let mut responses = gog.download_game(downloads);
-        let count = responses.len();
-        for (idx, mut response) in responses.iter_mut().enumerate() {
-            let total_size = response
-                .headers()
-                .get("Content-Length")
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .parse()
-                .unwrap();
-            let pb = ProgressBar::new(total_size);
-            pb.set_style(ProgressStyle::default_bar()
+    let mut names = vec![];
+    for download in downloads.iter() {
+        names.push(download.name.clone());
+    }
+    let mut responses = gog.download_game(downloads);
+    let count = responses.len();
+    for (idx, mut response) in responses.iter_mut().enumerate() {
+        let total_size = response
+            .headers()
+            .get("Content-Length")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let pb = ProgressBar::new(total_size);
+        pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .progress_chars("#>-"));
-            let name = names[idx].clone();
-            println!("Downloading {}, {} of {}", name, idx + 1, count);
-            let mut fd = fs::File::create(name.clone())?;
-            let mut perms = fd.metadata()?.permissions();
-            perms.set_mode(0o744);
-            fd.set_permissions(perms)?;
-            let mut pb_read = pb.wrap_read(response);
-            io::copy(&mut pb_read, &mut fd)?;
-            pb.finish();
-        }
-        println!("Done downloading!");
-        return Ok(names[0].clone());
+        let name = names[idx].clone();
+        println!("Downloading {}, {} of {}", name, idx + 1, count);
+        let mut fd = fs::File::create(name.clone())?;
+        let mut perms = fd.metadata()?.permissions();
+        perms.set_mode(0o744);
+        fd.set_permissions(perms)?;
+        let mut pb_read = pb.wrap_read(response);
+        io::copy(&mut pb_read, &mut fd)?;
+        pb.finish();
+    }
+    println!("Done downloading!");
+    return Ok(names[0].clone());
 }
