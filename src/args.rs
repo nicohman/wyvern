@@ -19,7 +19,9 @@ pub enum Wyvern {
         #[structopt(short = "w", long = "windows-auto", help = "Download windows version if no linux is available")]
         windows_auto: bool,
         #[structopt(long = "force-windows", help = "Force downloading windows version")]
-        windows_force:bool
+        windows_force:bool,
+        #[structopt(short = "f", long = "first", help = "When searching, use first result without waiting for selection")]
+        first: bool
     },
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),

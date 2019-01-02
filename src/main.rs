@@ -64,40 +64,52 @@ fn main() -> Result<(), ::std::io::Error> {
             install_after,
             windows_auto,
             windows_force,
+            first,
         } => {
             if let Some(search) = search {
                 let search_results =
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
                 if search_results.is_ok() {
                     let e = search_results.unwrap();
-                    for (idx, pd) in e.iter().enumerate() {
-                        println!("{}. {} - {}", idx, pd.title, pd.id);
-                    }
-                    let mut choice = String::new();
-                    loop {
-                        print!("Select a game to download:");
-                        io::stdout().flush().unwrap();
-                        io::stdin().read_line(&mut choice).unwrap();
-                        let parsed = choice.trim().parse::<usize>();
-                        if let Ok(i) = parsed {
-                            if e.len() > i {
-                                let details = gog.get_game_details(e[i].id).unwrap();
-                                let (name, downloaded_windows) =
-                                    download_prep(gog, details, windows_auto, windows_force)
-                                        .unwrap();
-                                if install_after.is_some() && !downloaded_windows {
-                                    println!("Installing game");
-                                    let mut installer = fs::File::open(name).unwrap();
-                                    install(&mut installer, install_after.unwrap());
+                    if !first {
+                        for (idx, pd) in e.iter().enumerate() {
+                            println!("{}. {} - {}", idx, pd.title, pd.id);
+                        }
+                        let mut choice = String::new();
+                        loop {
+                            print!("Select a game to download:");
+                            io::stdout().flush().unwrap();
+                            io::stdin().read_line(&mut choice).unwrap();
+                            let parsed = choice.trim().parse::<usize>();
+                            if let Ok(i) = parsed {
+                                if e.len() > i {
+                                    let details = gog.get_game_details(e[i].id).unwrap();
+                                    let (name, downloaded_windows) =
+                                        download_prep(gog, details, windows_auto, windows_force)
+                                            .unwrap();
+                                    if install_after.is_some() && !downloaded_windows {
+                                        println!("Installing game");
+                                        let mut installer = fs::File::open(name).unwrap();
+                                        install(&mut installer, install_after.unwrap());
+                                    }
+                                    break;
+                                } else {
+                                    println!("Please enter a valid number corresponding to an available download");
                                 }
-                                break;
                             } else {
-                                println!("Please enter a valid number corresponding to an available download");
+                                println!(
+                                    "Please enter a number corresponding to an available download"
+                                );
                             }
-                        } else {
-                            println!(
-                                "Please enter a number corresponding to an available download"
-                            );
+                        }
+                    } else {
+                        let details = gog.get_game_details(e[0].id).unwrap();
+                        let (name, downloaded_windows) =
+                            download_prep(gog, details, windows_auto, windows_force).unwrap();
+                        if install_after.is_some() && !downloaded_windows {
+                            println!("Installing game");
+                            let mut installer = fs::File::open(name).unwrap();
+                            install(&mut installer, install_after.unwrap());
                         }
                     }
                 } else {
@@ -148,8 +160,15 @@ fn main() -> Result<(), ::std::io::Error> {
                 if product.is_ok() {
                     let details = gog.get_game_details(product.unwrap()[0].id).unwrap();
                     let downloads = details.downloads.linux.unwrap();
-                    let current_version = regex.captures(&(downloads[0].version.clone().unwrap())).unwrap()[1].trim().to_string();
-                    println!("Installed version : {}. Version Online: {}", version, current_version);
+                    let current_version = regex
+                        .captures(&(downloads[0].version.clone().unwrap()))
+                        .unwrap()[1]
+                        .trim()
+                        .to_string();
+                    println!(
+                        "Installed version : {}. Version Online: {}",
+                        version, current_version
+                    );
                     if version == current_version && !force {
                         println!("No newer version to update to. Sorry!");
                     } else {
