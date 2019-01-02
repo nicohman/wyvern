@@ -12,6 +12,8 @@ extern crate human_panic;
 extern crate gog;
 extern crate indicatif;
 extern crate regex;
+#[cfg(feature = "eidolonint")]
+extern crate libeidolon;
 use regex::Regex;
 mod args;
 mod config;
@@ -84,13 +86,14 @@ fn main() -> Result<(), ::std::io::Error> {
                             if let Ok(i) = parsed {
                                 if e.len() > i {
                                     let details = gog.get_game_details(e[i].id).unwrap();
+                                    let pname = details.title.clone();
                                     let (name, downloaded_windows) =
                                         download_prep(gog, details, windows_auto, windows_force)
                                             .unwrap();
                                     if install_after.is_some() && !downloaded_windows {
                                         println!("Installing game");
                                         let mut installer = fs::File::open(name).unwrap();
-                                        install(&mut installer, install_after.unwrap());
+                                        install(&mut installer, install_after.unwrap(), pname);
                                     }
                                     break;
                                 } else {
@@ -104,12 +107,13 @@ fn main() -> Result<(), ::std::io::Error> {
                         }
                     } else {
                         let details = gog.get_game_details(e[0].id).unwrap();
+                        let pname = details.title.clone();
                         let (name, downloaded_windows) =
                             download_prep(gog, details, windows_auto, windows_force).unwrap();
                         if install_after.is_some() && !downloaded_windows {
                             println!("Installing game");
                             let mut installer = fs::File::open(name).unwrap();
-                            install(&mut installer, install_after.unwrap());
+                            install(&mut installer, install_after.unwrap(), pname);
                         }
                     }
                 } else {
@@ -117,13 +121,14 @@ fn main() -> Result<(), ::std::io::Error> {
                 }
             } else if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
+                let pname = details.title.clone();
                 let (name, downloaded_windows) =
                     download_prep(gog, details, windows_auto, windows_force).unwrap();
 
                 if install_after.is_some() && !downloaded_windows {
                     println!("Installing game");
                     let mut installer = fs::File::open(name).unwrap();
-                    install(&mut installer, install_after.unwrap());
+                    install(&mut installer, install_after.unwrap(), pname);
                 }
             } else {
                 println!("Did not specify a game to download. Exiting.");
@@ -135,7 +140,7 @@ fn main() -> Result<(), ::std::io::Error> {
         } => {
             let mut installer = File::open(&installer_name);
             if installer.is_ok() {
-                install(&mut installer.unwrap(), path);
+                install(&mut installer.unwrap(), path, installer_name);
             } else {
                 println!("File {} does not exist", installer_name)
             }
@@ -178,8 +183,8 @@ fn main() -> Result<(), ::std::io::Error> {
                         println!("Updating {} to version {}", name, current_version);
                         let name = download(gog, downloads).unwrap();
                         println!("Installing.");
-                        let mut installer = File::open(name).unwrap();
-                        install(&mut installer, path);
+                        let mut installer = File::open(name.clone()).unwrap();
+                        install(&mut installer, path, name);
                         println!("Game finished updating!");
                     }
                 } else {
@@ -266,7 +271,7 @@ fn download_prep(
         }
     }
 }
-fn install(installer: &mut File, path: PathBuf) {
+fn install(installer: &mut File, path: PathBuf, name: String) {
     extract(
         installer,
         "/tmp",
@@ -291,7 +296,7 @@ fn install(installer: &mut File, path: PathBuf) {
             .to_owned();
         //Extract only files for the game itself
         if !filtered_path.contains("meta") && !filtered_path.contains("scripts") {
-            let outpath = path.join(PathBuf::from(filtered_path));
+            let outpath = path.clone().join(PathBuf::from(filtered_path));
             if (&*file.name()).ends_with('/') {
                 fs::create_dir_all(&outpath).unwrap();
             } else {
@@ -308,6 +313,20 @@ fn install(installer: &mut File, path: PathBuf) {
                 fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
             }
         }
+    }
+    #[cfg(feature = "eidolonint")]
+    {
+        use libeidolon::*;
+        use libeidolon::games::*;
+        use libeidolon::helper::*;
+        let proc_name = create_procname(name.clone());
+        let game = Game {
+            name: proc_name,
+            pname: name,
+            command: std::env::current_dir().unwrap().join(path.join(PathBuf::from("start.sh"))).to_str().unwrap().to_string(),
+            typeg: GameType::Exe
+        };
+        add_game(game);
     }
 }
 pub fn login() -> Token {

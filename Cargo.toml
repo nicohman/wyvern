@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["nicohman <nicohman@demenses.net>"]
 license="GPL-3.0"
 repository="https://git.sr.ht/~nicohman/wyvern"
+[features]
+eidolonint = ["eidolon"]
 [[bin]]
 name = "wyvern"
 path = "src/main.rs"
@@ -18,3 +20,4 @@ gog = { git = "https://git.sr.ht/~nicohman/gogapi-rs", rev="240a0b55"}
 indicatif = "0.10.3"
 zip = "0.5"
 regex = "1"
+eidolon = { git = "https://git.sr.ht/~nicohman/eidolon", optional = true }
