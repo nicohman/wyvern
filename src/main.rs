@@ -290,7 +290,7 @@ fn install(installer: &mut File, path: PathBuf) {
             .replace("data/", "")
             .to_owned();
         //Extract only files for the game itself
-        if filtered_path.contains("game") {
+        if !filtered_path.contains("meta") && !filtered_path.contains("scripts") {
             let outpath = path.join(PathBuf::from(filtered_path));
             if (&*file.name()).ends_with('/') {
                 fs::create_dir_all(&outpath).unwrap();
