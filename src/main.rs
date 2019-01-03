@@ -323,8 +323,8 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
         let game = Game {
             name: proc_name,
             pname: name,
-            command: std::env::current_dir().unwrap().join(path.join(PathBuf::from("start.sh"))).to_str().unwrap().to_string(),
-            typeg: GameType::Exe
+            command: std::env::current_dir().unwrap().to_str().unwrap().to_string(),
+            typeg: GameType::WyvernGOG
         };
         add_game(game);
     }

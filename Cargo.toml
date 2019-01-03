@@ -20,4 +20,4 @@ gog = { git = "https://git.sr.ht/~nicohman/gogapi-rs", rev="240a0b55"}
 indicatif = "0.10.3"
 zip = "0.5"
 regex = "1"
-eidolon = { git = "https://git.sr.ht/~nicohman/eidolon", optional = true }
+eidolon = { git = "https://git.sr.ht/~nicohman/eidolon", optional = true , rev="b5128e19"}
