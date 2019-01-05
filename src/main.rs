@@ -21,6 +21,7 @@ use regex::Regex;
 mod args;
 mod config;
 use crate::args::Connect::*;
+use crate::args::Sync::*;
 use crate::args::Wyvern;
 use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
@@ -151,83 +152,88 @@ fn main() -> Result<(), ::std::io::Error> {
                 println!("File {} does not exist", installer_name)
             }
         }
-        Sync { game_dir, sync_to } => {
-            if sync_saves.is_some() {
-                let sync_saves = sync_saves
-                    .unwrap()
-                    .replace("~", dirs::home_dir().unwrap().to_str().unwrap());
-                let gameinfo = File::open(game_dir.join("gameinfo"));
-                if gameinfo.is_ok() {
-                    let mut ginfo_string = String::new();
-                    gameinfo.unwrap().read_to_string(&mut ginfo_string).unwrap();
-                    let gameinfo = parse_gameinfo(ginfo_string);
-                    if let Ok(details) =
-                        gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
-                    {
-                        let id = details[0].id;
-                        let savedb_path = PathBuf::from(sync_saves.clone()).join("savedb.json");
-                        let mut save_db = SaveDB::load(&savedb_path).unwrap();
-                        let mut path: PathBuf;
-                        if save_db.saves.contains_key(&format!("{}", id)) {
-                            path = PathBuf::from(
-                                save_db.saves.get(&format!("{}", id)).unwrap().path.clone(),
-                            );
-                        } else {
-                            let mut input = String::new();
-                            let mut yn = String::new();
-                            println!("You haven't specified where this game's save files are yet. Please insert a path to where they are located.");
-                            loop {
-                                io::stdout().flush().unwrap();
-                                io::stdin().read_line(&mut input).unwrap();
-                                print!("Are you sure this where the save files are located?(Y/n)");
-                                io::stdout().flush().unwrap();
-                                io::stdin().read_line(&mut yn).unwrap();
-                                if &yn == "n" || &yn == "N" {
-                                    continue;
+        Sync { .. } => match args {
+            Sync(Push { game_dir, sync_to }) => {
+                if sync_saves.is_some() {
+                    let sync_saves = sync_saves
+                        .unwrap()
+                        .replace("~", dirs::home_dir().unwrap().to_str().unwrap());
+                    let gameinfo = File::open(game_dir.join("gameinfo"));
+                    if gameinfo.is_ok() {
+                        let mut ginfo_string = String::new();
+                        gameinfo.unwrap().read_to_string(&mut ginfo_string).unwrap();
+                        let gameinfo = parse_gameinfo(ginfo_string);
+                        if let Ok(details) =
+                            gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
+                        {
+                            let id = details[0].id;
+                            let savedb_path = PathBuf::from(sync_saves.clone()).join("savedb.json");
+                            let mut save_db = SaveDB::load(&savedb_path).unwrap();
+                            let mut path: PathBuf;
+                            if save_db.saves.contains_key(&format!("{}", id)) {
+                                path = PathBuf::from(
+                                    save_db.saves.get(&format!("{}", id)).unwrap().path.clone(),
+                                );
+                            } else {
+                                let mut input = String::new();
+                                let mut yn = String::new();
+                                println!("You haven't specified where this game's save files are yet. Please insert a path to where they are located.");
+                                loop {
+                                    io::stdout().flush().unwrap();
+                                    io::stdin().read_line(&mut input).unwrap();
+                                    print!(
+                                        "Are you sure this where the save files are located?(Y/n)"
+                                    );
+                                    io::stdout().flush().unwrap();
+                                    io::stdin().read_line(&mut yn).unwrap();
+                                    if &yn == "n" || &yn == "N" {
+                                        continue;
+                                    }
+                                    break;
                                 }
-                                break;
+                                save_db.saves.insert(
+                                    format!("{}", id),
+                                    SaveInfo {
+                                        path: input.clone().trim().to_string(),
+                                        identifier: SaveType::GOG(id),
+                                    },
+                                );
+                                path = PathBuf::from(input.trim());
+                                save_db.store(&savedb_path).unwrap();
                             }
-                            save_db.saves.insert(
-                                format!("{}", id),
-                                SaveInfo {
-                                    path: input.clone().trim().to_string(),
-                                    identifier: SaveType::GOG(id),
-                                },
+                            let save_dir = PathBuf::from(sync_saves);
+                            let save_folder =
+                                save_dir.clone().join("saves").join(format!("gog_{}", id));
+                            println!("{:?}", save_folder);
+                            println!("{:?}", path);
+                            if fs::metadata(&save_folder).is_err() {
+                                fs::create_dir_all(&save_folder).unwrap();
+                            }
+                            let output = Command::new("rsync")
+                                .arg(
+                                    path.to_str()
+                                        .unwrap()
+                                        .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
+                                )
+                                .arg(save_folder.to_str().unwrap())
+                                .output()
+                                .unwrap();
+                            println!("Synced save files to save folder!");
+                        } else {
+                            println!(
+                                "Could not find a game named {} in your library!",
+                                gameinfo.name
                             );
-                            path = PathBuf::from(input.trim());
-                            save_db.store(&savedb_path).unwrap();
                         }
-                        let save_dir = PathBuf::from(sync_saves);
-                        let save_folder =
-                            save_dir.clone().join("saves").join(format!("gog_{}", id));
-                        println!("{:?}", save_folder);
-                        println!("{:?}", path);
-                        if fs::metadata(&save_folder).is_err() {
-                            fs::create_dir_all(&save_folder).unwrap();
-                        }
-                        let output = Command::new("rsync")
-                            .arg(
-                                path.to_str()
-                                    .unwrap()
-                                    .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
-                            )
-                            .arg(save_folder.to_str().unwrap())
-                            .output()
-                            .unwrap();
-                        println!("Synced save files to save folder!");
                     } else {
-                        println!(
-                            "Could not find a game named {} in your library!",
-                            gameinfo.name
-                        );
+                        println!("Game directory or gameinfo file missing.")
                     }
                 } else {
-                    println!("Game directory or gameinfo file missing.")
+                    println!("You have not configured a directory to sync your saves to. Edit ~/.config/wyvern/wyvern.json to get started!");
                 }
-            } else {
-                println!("You have not configured a directory to sync your saves to. Edit ~/.config/wyvern/wyvern.json to get started!");
             }
-        }
+            _ => println!("Wow, you should not be seeing this message."),
+        },
         Update { mut path, force } => {
             if path.is_none() {
                 path = Some(PathBuf::from(".".to_string()));

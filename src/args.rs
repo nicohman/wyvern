@@ -58,7 +58,12 @@ pub enum Wyvern {
         name = "sync",
         about = "Sync a game's saves to a specific location for backup"
     )]
-    Sync {
+    Sync(Sync),
+}
+#[derive(StructOpt, Debug)]
+pub enum Sync {
+    #[structopt(name = "push", about = "Push save files to sync location")]
+    Push {
         #[structopt(parse(from_os_str))]
         game_dir: PathBuf,
         #[structopt(parse(from_os_str))]
