@@ -5,15 +5,18 @@ extern crate confy;
 extern crate serde_derive;
 extern crate serde;
 extern crate serde_json;
+extern crate toml;
 use structopt::StructOpt;
 extern crate zip;
 #[macro_use]
 extern crate human_panic;
+extern crate dirs;
+use dirs::home_dir;
 extern crate gog;
 extern crate indicatif;
-extern crate regex;
 #[cfg(feature = "eidolonint")]
 extern crate libeidolon;
+extern crate regex;
 use regex::Regex;
 mod args;
 mod config;
@@ -21,11 +24,12 @@ use crate::args::Connect::*;
 use crate::args::Wyvern;
 use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
-use crate::config::Config;
+use crate::config::*;
 use gog::extract::*;
 use gog::gog::{connect::ConnectGameStatus::*, connect::*, FilterParam::*, *};
 use gog::token::Token;
 use gog::Error;
+use gog::ErrorKind::*;
 use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
@@ -36,6 +40,7 @@ use std::io::Read;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::process::Command;
 fn main() -> Result<(), ::std::io::Error> {
     #[cfg(not(debug_assertions))]
     setup_panic!();
@@ -48,6 +53,7 @@ fn main() -> Result<(), ::std::io::Error> {
     config.token = Some(config.token.unwrap().refresh().unwrap());
     print!("");
     let gog = Gog::new(config.token.clone().unwrap());
+    let sync_saves = config.sync_saves.clone();
     confy::store("wyvern", config)?;
 
     match args {
@@ -145,6 +151,83 @@ fn main() -> Result<(), ::std::io::Error> {
                 println!("File {} does not exist", installer_name)
             }
         }
+        Sync { game_dir, sync_to } => {
+            if sync_saves.is_some() {
+                let sync_saves = sync_saves
+                    .unwrap()
+                    .replace("~", dirs::home_dir().unwrap().to_str().unwrap());
+                let gameinfo = File::open(game_dir.join("gameinfo"));
+                if gameinfo.is_ok() {
+                    let mut ginfo_string = String::new();
+                    gameinfo.unwrap().read_to_string(&mut ginfo_string).unwrap();
+                    let gameinfo = parse_gameinfo(ginfo_string);
+                    if let Ok(details) =
+                        gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
+                    {
+                        let id = details[0].id;
+                        let savedb_path = PathBuf::from(sync_saves.clone()).join("savedb.json");
+                        let mut save_db = SaveDB::load(&savedb_path).unwrap();
+                        let mut path: PathBuf;
+                        if save_db.saves.contains_key(&format!("{}", id)) {
+                            path = PathBuf::from(
+                                save_db.saves.get(&format!("{}", id)).unwrap().path.clone(),
+                            );
+                        } else {
+                            let mut input = String::new();
+                            let mut yn = String::new();
+                            println!("You haven't specified where this game's save files are yet. Please insert a path to where they are located.");
+                            loop {
+                                io::stdout().flush().unwrap();
+                                io::stdin().read_line(&mut input).unwrap();
+                                print!("Are you sure this where the save files are located?(Y/n)");
+                                io::stdout().flush().unwrap();
+                                io::stdin().read_line(&mut yn).unwrap();
+                                if &yn == "n" || &yn == "N" {
+                                    continue;
+                                }
+                                break;
+                            }
+                            save_db.saves.insert(
+                                format!("{}", id),
+                                SaveInfo {
+                                    path: input.clone().trim().to_string(),
+                                    identifier: SaveType::GOG(id),
+                                },
+                            );
+                            path = PathBuf::from(input.trim());
+                            save_db.store(&savedb_path).unwrap();
+                        }
+                        let save_dir = PathBuf::from(sync_saves);
+                        let save_folder =
+                            save_dir.clone().join("saves").join(format!("gog_{}", id));
+                        println!("{:?}", save_folder);
+                        println!("{:?}", path);
+                        if fs::metadata(&save_folder).is_err() {
+                            fs::create_dir_all(&save_folder).unwrap();
+                        }
+                        let output = Command::new("rsync")
+                            .arg(
+                                path.to_str()
+                                    .unwrap()
+                                    .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
+                            )
+                            .arg(save_folder.to_str().unwrap())
+                            .output()
+                            .unwrap();
+                        println!("Synced save files to save folder!");
+                    } else {
+                        println!(
+                            "Could not find a game named {} in your library!",
+                            gameinfo.name
+                        );
+                    }
+                } else {
+                    println!("Game directory or gameinfo file missing.")
+                }
+            } else {
+                println!("You have not configured a directory to sync your saves to. Edit ~/.config/wyvern/wyvern.json to get started!");
+            }
+        }
         Update { mut path, force } => {
             if path.is_none() {
                 path = Some(PathBuf::from(".".to_string()));
@@ -155,11 +238,11 @@ fn main() -> Result<(), ::std::io::Error> {
             println!("{:?}", game_info_path);
             if let Ok(mut gameinfo) = File::open(game_info_path) {
                 let regex = Regex::new(r"(.*) \(gog").unwrap();
-                let mut ginfo = String::new();
-                gameinfo.read_to_string(&mut ginfo).unwrap();
-                let mut lines = ginfo.trim().lines();
-                let name = lines.next().unwrap().to_string();
-                let version = lines.last().unwrap().trim().to_string();
+                let mut ginfo_string = String::new();
+                gameinfo.read_to_string(&mut ginfo_string).unwrap();
+                let ginfo = parse_gameinfo(ginfo_string);
+                let name = ginfo.name.clone();
+                let version = ginfo.version.clone();
                 let product =
                     gog.get_filtered_products(FilterParams::from_one(Search(name.clone())));
                 if product.is_ok() {
@@ -205,22 +288,35 @@ fn main() -> Result<(), ::std::io::Error> {
             }
             match args {
                 Connect(ListConnect { claim, quiet }) => {
-                    let mut items = gog.connect_status(uid).unwrap().items;
-                    let left_over: Vec<(String, ConnectGame)> = items
-                        .into_iter()
-                        .filter_map(|x| {
-                            if !claim || x.1.status == READY_TO_LINK {
-                                let details = gog.product(vec![x.1.id], vec![]);
-                                if details.is_ok() {
-                                    println!("{} - {:?}", details.unwrap()[0].title, x.1.status);
-                                    return None;
+                    let status = gog.connect_status(uid);
+                    if status.is_ok() {
+                        let mut items = status.unwrap().items;
+                        let left_over: Vec<(String, ConnectGame)> = items
+                            .into_iter()
+                            .filter_map(|x| {
+                                if !claim || x.1.status == READY_TO_LINK {
+                                    let details = gog.product(vec![x.1.id], vec![]);
+                                    if details.is_ok() {
+                                        println!(
+                                            "{} - {:?}",
+                                            details.unwrap()[0].title,
+                                            x.1.status
+                                        );
+                                        return None;
+                                    }
                                 }
-                            }
-                            return Some(x);
-                        })
-                        .collect();
-                    if !quiet {
-                        println!("{} items not shown due to options", left_over.len());
+                                return Some(x);
+                            })
+                            .collect();
+                        if !quiet {
+                            println!("{} items not shown due to options", left_over.len());
+                        }
+                    } else {
+                        let err = status.err().unwrap();
+                        match err.kind() {
+                            NotAvailable => println!("No GOG Connect games are available."),
+                            _ => panic!("{:?}", err),
+                        };
                     }
                 }
                 Connect(ClaimAll {}) => {
@@ -232,6 +328,15 @@ fn main() -> Result<(), ::std::io::Error> {
         }
     };
     Ok(())
+}
+fn parse_gameinfo(ginfo: String) -> GameInfo {
+    let mut lines = ginfo.trim().lines();
+    let name = lines.next().unwrap().to_string();
+    let version = lines.last().unwrap().trim().to_string();
+    GameInfo {
+        name: name,
+        version: version,
+    }
 }
 fn download_prep(
     gog: Gog,
@@ -316,15 +421,19 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
     }
     #[cfg(feature = "eidolonint")]
     {
-        use libeidolon::*;
         use libeidolon::games::*;
         use libeidolon::helper::*;
+        use libeidolon::*;
         let proc_name = create_procname(name.clone());
         let game = Game {
             name: proc_name,
             pname: name,
-            command: std::env::current_dir().unwrap().to_str().unwrap().to_string(),
-            typeg: GameType::WyvernGOG
+            command: std::env::current_dir()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string(),
+            typeg: GameType::WyvernGOG,
         };
         add_game(game);
     }

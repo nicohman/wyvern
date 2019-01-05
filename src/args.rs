@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+
 #[derive(StructOpt, Debug)]
 #[structopt(name = "wyvern")]
 pub enum Wyvern {
@@ -14,14 +15,26 @@ pub enum Wyvern {
         #[structopt(short = "s", long = "search", help = "search manually")]
         search: Option<String>,
         #[structopt(parse(from_os_str))]
-        #[structopt(short = "n", long = "install", help = "install downloaded game to path")]
+        #[structopt(
+            short = "n",
+            long = "install",
+            help = "install downloaded game to path"
+        )]
         install_after: Option<PathBuf>,
-        #[structopt(short = "w", long = "windows-auto", help = "Download windows version if no linux is available")]
+        #[structopt(
+            short = "w",
+            long = "windows-auto",
+            help = "Download windows version if no linux is available"
+        )]
         windows_auto: bool,
         #[structopt(long = "force-windows", help = "Force downloading windows version")]
-        windows_force:bool,
-        #[structopt(short = "f", long = "first", help = "When searching, use first result without waiting for selection")]
-        first: bool
+        windows_force: bool,
+        #[structopt(
+            short = "f",
+            long = "first",
+            help = "When searching, use first result without waiting for selection"
+        )]
+        first: bool,
     },
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),
@@ -29,15 +42,28 @@ pub enum Wyvern {
     Install {
         installer_name: String,
         #[structopt(parse(from_os_str))]
-        path: PathBuf
+        path: PathBuf,
     },
-    #[structopt(name = "update", about = "Update a game if there is an update available")]
+    #[structopt(
+        name = "update",
+        about = "Update a game if there is an update available"
+    )]
     Update {
         #[structopt(parse(from_os_str))]
         path: Option<PathBuf>,
         #[structopt(short = "f", long = "force", help = "Force updating even if unneeded")]
-        force: bool
-    }
+        force: bool,
+    },
+    #[structopt(
+        name = "sync",
+        about = "Sync a game's saves to a specific location for backup"
+    )]
+    Sync {
+        #[structopt(parse(from_os_str))]
+        game_dir: PathBuf,
+        #[structopt(parse(from_os_str))]
+        sync_to: Option<PathBuf>,
+    },
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {
