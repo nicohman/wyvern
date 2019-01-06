@@ -78,6 +78,13 @@ pub enum Sync {
         #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
         force: bool,
     },
+    #[structopt(name = "db", about = "Pull all save files from a database")]
+    Db {
+        #[structopt(parse(from_os_str))]
+        path: Option<PathBuf>,
+        #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
+        force: bool,
+    },
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {
