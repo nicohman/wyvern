@@ -75,6 +75,8 @@ pub enum Sync {
         game_dir: PathBuf,
         #[structopt(parse(from_os_str))]
         sync_from: Option<PathBuf>,
+        #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
+        force: bool,
     },
 }
 #[derive(StructOpt, Debug)]

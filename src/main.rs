@@ -53,7 +53,6 @@ fn main() -> Result<(), ::std::io::Error> {
     let gog = Gog::new(config.token.clone().unwrap());
     let sync_saves = config.sync_saves.clone();
     confy::store("wyvern", config)?;
-
     match args {
         List { id } => {
             if let Some(id) = id {
@@ -152,9 +151,12 @@ fn main() -> Result<(), ::std::io::Error> {
         Sync { .. } => match args {
             Sync(Push { game_dir, sync_to }) => {
                 if sync_saves.is_some() {
-                    let sync_saves = sync_saves
-                        .unwrap()
-                        .replace("~", dirs::home_dir().unwrap().to_str().unwrap());
+                    let mut sync_saves = sync_saves.unwrap();
+                    if sync_to.is_some() {
+                        sync_saves = sync_to.unwrap().to_str().unwrap().to_string();
+                    }
+                    sync_saves =
+                        sync_saves.replace("~", dirs::home_dir().unwrap().to_str().unwrap());
                     let gameinfo = File::open(game_dir.join("gameinfo"));
                     if gameinfo.is_ok() {
                         let mut ginfo_string = String::new();
@@ -233,6 +235,7 @@ fn main() -> Result<(), ::std::io::Error> {
             Sync(Pull {
                 game_dir,
                 sync_from,
+                force,
             }) => {
                 if sync_saves.is_some() {
                     let sync_saves = sync_saves
@@ -273,8 +276,17 @@ fn main() -> Result<(), ::std::io::Error> {
                                         let cur_updated =
                                             current_saves_try.unwrap().modified().unwrap();
                                         let up_updated = updated_saves.modified().unwrap();
-                                        if cur_updated > up_updated {
-                                            println!("Current save files are more recent. Are you sure you want to proceed?");
+                                        if cur_updated > up_updated && !force {
+                                            print!("Current save files are more recent. Are you sure you want to proceed?(y/N)");
+                                            let mut answer = String::new();
+                                            io::stdout().flush().unwrap();
+                                            io::stdin().read_line(&mut answer).unwrap();
+                                            if answer.as_str() == "y" || answer.as_str() == "Y" {
+                                                println!("Proceeding as normal.");
+                                            } else {
+                                                println!("Sync aborted.");
+                                                std::process::exit(0);
+                                            }
                                         }
                                     }
                                     let to_copy_path = save_path.to_str().unwrap().to_string();
