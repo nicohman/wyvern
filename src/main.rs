@@ -5,13 +5,11 @@ extern crate confy;
 extern crate serde_derive;
 extern crate serde;
 extern crate serde_json;
-extern crate toml;
 use structopt::StructOpt;
 extern crate zip;
 #[macro_use]
 extern crate human_panic;
 extern crate dirs;
-use dirs::home_dir;
 extern crate gog;
 extern crate indicatif;
 #[cfg(feature = "eidolonint")]
@@ -34,7 +32,6 @@ use gog::ErrorKind::*;
 use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
-use std::fs::OpenOptions;
 use std::fs::*;
 use std::io;
 use std::io::Read;
@@ -201,6 +198,10 @@ fn main() -> Result<(), ::std::io::Error> {
                                 path = PathBuf::from(input.trim());
                                 save_db.store(&savedb_path).unwrap();
                             }
+                            let mut path_string = path.to_str().unwrap().to_string();
+                            if path.exists() && path.is_dir() {
+                                path_string += "/";
+                            }
                             let save_dir = PathBuf::from(sync_saves);
                             let save_folder =
                                 save_dir.clone().join("saves").join(format!("gog_{}", id));
@@ -209,27 +210,104 @@ fn main() -> Result<(), ::std::io::Error> {
                             if fs::metadata(&save_folder).is_err() {
                                 fs::create_dir_all(&save_folder).unwrap();
                             }
-                            let output = Command::new("rsync")
+                            Command::new("rsync")
                                 .arg(
-                                    path.to_str()
-                                        .unwrap()
+                                    path_string
                                         .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
                                 )
                                 .arg(save_folder.to_str().unwrap())
+                                .arg("-a")
                                 .output()
                                 .unwrap();
                             println!("Synced save files to save folder!");
                         } else {
-                            println!(
-                                "Could not find a game named {} in your library!",
-                                gameinfo.name
-                            );
+                            println!("Could not find a game named {}.", gameinfo.name);
                         }
                     } else {
                         println!("Game directory or gameinfo file missing.")
                     }
                 } else {
-                    println!("You have not configured a directory to sync your saves to. Edit ~/.config/wyvern/wyvern.json to get started!");
+                    println!("You have not configured a directory to sync your saves to. Edit ~/.config/wyvern/wyvern.toml to get started!");
+                }
+            }
+            Sync(Pull {
+                game_dir,
+                sync_from,
+            }) => {
+                if sync_saves.is_some() {
+                    let sync_saves = sync_saves
+                        .unwrap()
+                        .replace("~", dirs::home_dir().unwrap().to_str().unwrap());
+                    let gameinfo = File::open(game_dir.join("gameinfo"));
+                    if gameinfo.is_ok() {
+                        let mut ginfo_string = String::new();
+                        gameinfo
+                            .unwrap()
+                            .read_to_string(&mut ginfo_string)
+                            .expect("Couldn't read from gameinfo file.");
+                        let gameinfo = parse_gameinfo(ginfo_string);
+                        if let Ok(details) =
+                            gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
+                        {
+                            let id = details[0].id;
+                            let mut savedb_path =
+                                PathBuf::from(sync_saves.clone()).join("savedb.json");
+                            if sync_from.is_some() {
+                                savedb_path = sync_from.unwrap();
+                            }
+                            let mut save_db = SaveDB::load(&savedb_path).unwrap();
+                            if save_db.saves.contains_key(&format!("{}", id)) {
+                                let save_path = PathBuf::from(sync_saves.clone())
+                                    .join("saves")
+                                    .join(format!("gog_{}", id));
+                                let metadata = fs::metadata(&save_path);
+                                if metadata.is_ok() {
+                                    let save_files = save_db.saves.get(&format!("{}", id)).unwrap();
+                                    let current_saves_try =
+                                        fs::metadata(&save_files.path.replace(
+                                            "~",
+                                            dirs::home_dir().unwrap().to_str().unwrap(),
+                                        ));
+                                    if current_saves_try.is_ok() {
+                                        let updated_saves = metadata.unwrap();
+                                        let cur_updated =
+                                            current_saves_try.unwrap().modified().unwrap();
+                                        let up_updated = updated_saves.modified().unwrap();
+                                        if cur_updated > up_updated {
+                                            println!("Current save files are more recent. Are you sure you want to proceed?");
+                                        }
+                                    }
+                                    let to_copy_path = save_path.to_str().unwrap().to_string();
+                                    let mut dest_path =
+                                        PathBuf::from(save_files.path.clone().replace(
+                                            "~",
+                                            dirs::home_dir().unwrap().to_str().unwrap(),
+                                        ));
+                                    dest_path = dest_path.parent().unwrap().to_path_buf();
+                                    println!("{:?}", dest_path);
+                                    println!("{}", to_copy_path);
+                                    Command::new("rsync")
+                                        .arg(to_copy_path + "/")
+                                        .arg(dest_path.to_str().unwrap().to_string() + "/")
+                                        .arg("-a")
+                                        .arg("--force")
+                                        .output()
+                                        .unwrap();
+                                    println!("Pulled save files");
+                                } else {
+                                    println!("Saves do not exist.");
+                                }
+                            } else {
+                                println!("This game's saves have not been configured to be synced yet. Push first!");
+                            }
+                        } else {
+                            println!("Could not find a game named {}.", gameinfo.name)
+                        }
+                    } else {
+                        println!("Game directory or gameinfo file missing.");
+                    }
+                } else {
+                    println!("You have not config a directory to sync your saves from. Edit ~/.config/wyvern/wyvern.toml to get started!");
                 }
             }
             _ => println!("Wow, you should not be seeing this message."),
@@ -393,7 +471,7 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
         },
     )
     .unwrap();
-    let mut file = File::open("/tmp/data.zip").unwrap();
+    let file = File::open("/tmp/data.zip").unwrap();
     // Extract code taken mostly from zip example
     let mut archive = zip::ZipArchive::new(file).unwrap();
     for i in 0..archive.len() {

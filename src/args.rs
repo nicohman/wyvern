@@ -69,6 +69,13 @@ pub enum Sync {
         #[structopt(parse(from_os_str))]
         sync_to: Option<PathBuf>,
     },
+    #[structopt(name = "pull", about = "Pull synced save files")]
+    Pull {
+        #[structopt(parse(from_os_str))]
+        game_dir: PathBuf,
+        #[structopt(parse(from_os_str))]
+        sync_from: Option<PathBuf>,
+    },
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {

@@ -1,21 +1,11 @@
 use fs::OpenOptions;
 use gog::token::Token;
-use serde;
-use serde::de::Deserialize;
-use serde::ser::SerializeMap;
-use serde::ser::Serializer;
-use serde::Deserializer;
-use serde::Serialize;
-use serde_derive;
 use serde_json;
 use std::collections::HashMap;
 use std::default::Default;
-use std::fmt::Display;
-use std::fmt::Formatter;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use toml;
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Hash)]
 pub enum SaveType {
     GOG(i64),
@@ -37,7 +27,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             version: 1,
-            sync_saves: Some("hi".to_string()),
+            sync_saves: None,
             token: None,
         }
     }
