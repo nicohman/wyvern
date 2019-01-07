@@ -84,6 +84,12 @@ pub enum Sync {
         path: Option<PathBuf>,
         #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
         force: bool,
+        #[structopt(
+            short = "i",
+            long = "ignore",
+            help = "Automatically refuse syncing save files that are older than the current"
+        )]
+        ignore_older: bool,
     },
 }
 #[derive(StructOpt, Debug)]

@@ -322,7 +322,11 @@ fn main() -> Result<(), ::std::io::Error> {
                     println!("You have not config a directory to sync your saves from. Edit ~/.config/wyvern/wyvern.toml to get started!");
                 }
             }
-            Sync(Db { path, force }) => {
+            Sync(Db {
+                path,
+                force,
+                ignore_older,
+            }) => {
                 let dbpath: PathBuf;
                 if path.is_some() {
                     dbpath = path.unwrap();
@@ -351,6 +355,10 @@ fn main() -> Result<(), ::std::io::Error> {
                         let save_modified = save_meta.unwrap().modified().unwrap();
                         let synced_modified = synced_meta.modified().unwrap();
                         if synced_modified < save_modified && !force {
+                            if ignore_older {
+                                println!("Skipping due to newer save files being present");
+                                continue;
+                            }
                             print!("Current save files are more recent. Are you sure you want to proceed?(y/N)");
                             let mut answer = String::new();
                             io::stdout().flush().unwrap();
