@@ -322,7 +322,7 @@ fn main() -> Result<(), ::std::io::Error> {
                     println!("You have not config a directory to sync your saves from. Edit ~/.config/wyvern/wyvern.toml to get started!");
                 }
             }
-            Sync(Db {
+            Sync(DbPull {
                 path,
                 force,
                 ignore_older,
@@ -373,6 +373,71 @@ fn main() -> Result<(), ::std::io::Error> {
                     }
                     let to_copy_path = synced_path.to_str().unwrap().to_string();
                     let mut dest_path = save_path;
+                    dest_path = dest_path.parent().unwrap().to_path_buf();
+                    Command::new("rsync")
+                        .arg(to_copy_path + "/")
+                        .arg(dest_path.to_str().unwrap().to_string() + "/")
+                        .arg("-a")
+                        .arg("--force")
+                        .output()
+                        .unwrap();
+                    println!("Synced {}", key);
+                }
+            }
+            Sync(DbPush { path }) => {
+                let dpath: PathBuf;
+                if path.is_some() {
+                    dpath = path.unwrap();
+                } else if sync_saves.is_some() {
+                    dpath = PathBuf::from(sync_saves.unwrap());
+                } else {
+                    println!("You have not specified a sync directory in the config yet. Specify one or call db with a path to your db.");
+                    std::process::exit(0);
+                }
+                let savedb = SaveDB::load(dpath.clone().join("savedb.json")).unwrap();
+                for (key, value) in savedb.saves {
+                    println!("Syncing {} now", key);
+                    let save_path = PathBuf::from(
+                        value
+                            .path
+                            .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
+                    );
+                    let mut folder_name = key.clone();
+                    if let SaveType::GOG(id) = value.identifier {
+                        folder_name = format!("gog_{}", id);
+                    }
+                    let mut dest_path = dpath.join("saves").join(&folder_name);
+                    let dest_meta = fs::metadata(&dest_path);
+                    let save_meta = fs::metadata(&save_path);
+                    if save_meta.is_err() {
+                        println!(
+                            "Save files that should be located at {} are not. Skipping.",
+                            value.path
+                        );
+                        continue;
+                    }
+                    if dest_meta.is_err() {
+                        println!(
+                            "Save folder for {} has not been created yet. Creating.",
+                            key
+                        );
+                        fs::create_dir_all(&dest_path).unwrap();
+                    }
+                    let dest_updated = dest_meta.unwrap().modified().unwrap();
+                    let save_updated = save_meta.unwrap().modified().unwrap();
+                    if dest_updated > save_updated {
+                        println!("Synced save files are more recent. Are you sure you want to proceed?(y/N)");
+                        let mut answer = String::new();
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut answer).unwrap();
+                        if answer.as_str() == "y" || answer.as_str() == "Y" {
+                            println!("Proceeding as normal.");
+                        } else {
+                            println!("Sync aborted.");
+                            continue;
+                        }
+                    }
+                    let to_copy_path = save_path.to_str().unwrap().to_string();
                     dest_path = dest_path.parent().unwrap().to_path_buf();
                     Command::new("rsync")
                         .arg(to_copy_path + "/")

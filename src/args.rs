@@ -78,8 +78,8 @@ pub enum Sync {
         #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
         force: bool,
     },
-    #[structopt(name = "db", about = "Pull all save files from a database")]
-    Db {
+    #[structopt(name = "db-pull", about = "Pull all save files from a database")]
+    DbPull {
         #[structopt(parse(from_os_str))]
         path: Option<PathBuf>,
         #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
@@ -91,6 +91,11 @@ pub enum Sync {
         )]
         ignore_older: bool,
     },
+    #[structopt(name = "db-push", about = "Push all save files in a database")]
+    DbPush {
+        #[structopt(parse(from_os_str))]
+        path: Option<PathBuf>
+    }
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {
