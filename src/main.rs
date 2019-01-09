@@ -349,38 +349,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         folder_name = format!("gog_{}", id);
                     }
                     let synced_path = dbpath.join("saves").join(folder_name);
-                    let synced_meta = fs::metadata(&synced_path).unwrap();
-                    let save_meta = fs::metadata(&save_path);
-                    if save_meta.is_ok() {
-                        let save_modified = save_meta.unwrap().modified().unwrap();
-                        let synced_modified = synced_meta.modified().unwrap();
-                        if synced_modified < save_modified && !force {
-                            if ignore_older {
-                                println!("Skipping due to newer save files being present");
-                                continue;
-                            }
-                            print!("Current save files are more recent. Are you sure you want to proceed?(y/N)");
-                            let mut answer = String::new();
-                            io::stdout().flush().unwrap();
-                            io::stdin().read_line(&mut answer).unwrap();
-                            if answer.as_str() == "y" || answer.as_str() == "Y" {
-                                println!("Proceeding as normal.");
-                            } else {
-                                println!("Sync aborted.");
-                                continue;
-                            }
-                        }
-                    }
-                    let to_copy_path = synced_path.to_str().unwrap().to_string();
-                    let mut dest_path = save_path;
-                    dest_path = dest_path.parent().unwrap().to_path_buf();
-                    Command::new("rsync")
-                        .arg(to_copy_path + "/")
-                        .arg(dest_path.to_str().unwrap().to_string() + "/")
-                        .arg("-a")
-                        .arg("--force")
-                        .output()
-                        .unwrap();
+                    sync(synced_path, save_path, force, ignore_older);
                     println!("Synced {}", key);
                 }
             }
@@ -407,45 +376,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         folder_name = format!("gog_{}", id);
                     }
                     let mut dest_path = dpath.join("saves").join(&folder_name);
-                    let dest_meta = fs::metadata(&dest_path);
-                    let save_meta = fs::metadata(&save_path);
-                    if save_meta.is_err() {
-                        println!(
-                            "Save files that should be located at {} are not. Skipping.",
-                            value.path
-                        );
-                        continue;
-                    }
-                    if dest_meta.is_err() {
-                        println!(
-                            "Save folder for {} has not been created yet. Creating.",
-                            key
-                        );
-                        fs::create_dir_all(&dest_path).unwrap();
-                    }
-                    let dest_updated = dest_meta.unwrap().modified().unwrap();
-                    let save_updated = save_meta.unwrap().modified().unwrap();
-                    if dest_updated > save_updated {
-                        println!("Synced save files are more recent. Are you sure you want to proceed?(y/N)");
-                        let mut answer = String::new();
-                        io::stdout().flush().unwrap();
-                        io::stdin().read_line(&mut answer).unwrap();
-                        if answer.as_str() == "y" || answer.as_str() == "Y" {
-                            println!("Proceeding as normal.");
-                        } else {
-                            println!("Sync aborted.");
-                            continue;
-                        }
-                    }
-                    let to_copy_path = save_path.to_str().unwrap().to_string();
-                    dest_path = dest_path.parent().unwrap().to_path_buf();
-                    Command::new("rsync")
-                        .arg(to_copy_path + "/")
-                        .arg(dest_path.to_str().unwrap().to_string() + "/")
-                        .arg("-a")
-                        .arg("--force")
-                        .output()
-                        .unwrap();
+                    sync(save_path, dest_path, false, false);
                     println!("Synced {}", key);
                 }
             }
@@ -559,6 +490,50 @@ fn parse_gameinfo(ginfo: String) -> GameInfo {
     GameInfo {
         name: name,
         version: version,
+    }
+}
+fn sync(sync_from: PathBuf, sync_to: PathBuf, ignore_older: bool, force: bool) {
+    let from_meta = fs::metadata(&sync_from);
+    let to_meta = fs::metadata(&sync_to);
+    if from_meta.is_err() {
+        println!("Can't sync nonexistent files! There should be save files at {:?}, but there are not. Aborting.", &sync_from);
+        return;
+    }
+    if let Ok(to_meta) = to_meta {
+        let to_modified = to_meta.modified().unwrap();
+        let from_modified = from_meta.unwrap().modified().unwrap();
+        if to_modified > from_modified && !force {
+            if ignore_older {
+                println!("Aborting due to --ignore-older flag and newer save files being present");
+                return;
+            }
+            println!("Synced save files are more recent. Are you sure you want to proceed?(y/N)");
+            let mut answer = String::new();
+            io::stdout().flush().unwrap();
+            io::stdin().read_line(&mut answer).unwrap();
+            if answer.as_str() == "y" || answer.as_str() == "Y" {
+                println!("Proceeding as normal.");
+            } else {
+                println!("Sync aborted.");
+                return;
+            }
+        }
+        Command::new("rsync")
+            .arg(sync_from.to_str().unwrap().to_string() + "/")
+            .arg(
+                sync_to
+                    .parent()
+                    .unwrap()
+                    .to_path_buf()
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+                    + "/",
+            )
+            .arg("-a")
+            .arg("--force")
+            .output()
+            .unwrap();
     }
 }
 fn download_prep(
