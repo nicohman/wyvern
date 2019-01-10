@@ -156,7 +156,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 if let Ok(read) = read_game(game.as_str()) {
                     if read.typeg == GameType::WyvernGOG {
                         println!("Attempting to update {}", read.pname);
-                        let path = PathBuf::from(read.command).parent().unwrap().to_path_buf();
+                        let path = PathBuf::from(read.command);
                         let ginfo_path = path.clone().join("gameinfo");
                         update(&gog, path, ginfo_path, false);
                     }
