@@ -148,6 +148,23 @@ fn main() -> Result<(), ::std::io::Error> {
                 println!("File {} does not exist", installer_name)
             }
         }
+        #[cfg(feature = "eidolonint")]
+        UpdateEidolon {} => {
+            use libeidolon::games::*;
+            let eidolon_games = get_games();
+            for game in eidolon_games {
+                if let Ok(read) = read_game(game.as_str()) {
+                    if read.typeg == GameType::WyvernGOG {
+                        println!("Attempting to update {}", read.pname);
+                        let path = PathBuf::from(read.command).parent().unwrap().to_path_buf();
+                        let ginfo_path = path.clone().join("gameinfo");
+                        update(&gog, path, ginfo_path, false);
+                    }
+                } else {
+                    println!("Could not check {}", game);
+                }
+            }
+        }
         Sync { .. } => match args {
             Sync(Push { game_dir, sync_to }) => {
                 if sync_saves.is_some() {
@@ -350,46 +367,7 @@ fn main() -> Result<(), ::std::io::Error> {
 
             let game_info_path = path.clone().join("gameinfo");
             println!("{:?}", game_info_path);
-            if let Ok(mut gameinfo) = File::open(game_info_path) {
-                let regex = Regex::new(r"(.*) \(gog").unwrap();
-                let mut ginfo_string = String::new();
-                gameinfo.read_to_string(&mut ginfo_string).unwrap();
-                let ginfo = parse_gameinfo(ginfo_string);
-                let name = ginfo.name.clone();
-                let version = ginfo.version.clone();
-                let product =
-                    gog.get_filtered_products(FilterParams::from_one(Search(name.clone())));
-                if product.is_ok() {
-                    let details = gog.get_game_details(product.unwrap()[0].id).unwrap();
-                    let downloads = details.downloads.linux.unwrap();
-                    let current_version = regex
-                        .captures(&(downloads[0].version.clone().unwrap()))
-                        .unwrap()[1]
-                        .trim()
-                        .to_string();
-                    println!(
-                        "Installed version : {}. Version Online: {}",
-                        version, current_version
-                    );
-                    if version == current_version && !force {
-                        println!("No newer version to update to. Sorry!");
-                    } else {
-                        if force && version == current_version {
-                            println!("Forcing reinstall due to --force option.");
-                        }
-                        println!("Updating {} to version {}", name, current_version);
-                        let name = download(gog, downloads).unwrap();
-                        println!("Installing.");
-                        let mut installer = File::open(name.clone()).unwrap();
-                        install(&mut installer, path, name);
-                        println!("Game finished updating!");
-                    }
-                } else {
-                    println!("Can't find game {} in your library.", name);
-                }
-            } else {
-                println!("Game installation missing a gameinfo file to check for update with.");
-            }
+            update(&gog, path, game_info_path, force);
         }
         Connect { .. } => {
             let uid: i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
@@ -442,6 +420,47 @@ fn main() -> Result<(), ::std::io::Error> {
         }
     };
     Ok(())
+}
+fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool) {
+    if let Ok(mut gameinfo) = File::open(game_info_path) {
+        let regex = Regex::new(r"(.*) \(gog").unwrap();
+        let mut ginfo_string = String::new();
+        gameinfo.read_to_string(&mut ginfo_string).unwrap();
+        let ginfo = parse_gameinfo(ginfo_string);
+        let name = ginfo.name.clone();
+        let version = ginfo.version.clone();
+        let product = gog.get_filtered_products(FilterParams::from_one(Search(name.clone())));
+        if product.is_ok() {
+            let details = gog.get_game_details(product.unwrap()[0].id).unwrap();
+            let downloads = details.downloads.linux.unwrap();
+            let current_version = regex
+                .captures(&(downloads[0].version.clone().unwrap()))
+                .unwrap()[1]
+                .trim()
+                .to_string();
+            println!(
+                "Installed version : {}. Version Online: {}",
+                version, current_version
+            );
+            if version == current_version && !force {
+                println!("No newer version to update to. Sorry!");
+            } else {
+                if force && version == current_version {
+                    println!("Forcing reinstall due to --force option.");
+                }
+                println!("Updating {} to version {}", name, current_version);
+                let name = download(&gog, downloads).unwrap();
+                println!("Installing.");
+                let mut installer = File::open(name.clone()).unwrap();
+                install(&mut installer, path, name);
+                println!("Game finished updating!");
+            }
+        } else {
+            println!("Can't find game {} in your library.", name);
+        }
+    } else {
+        println!("Game installation missing a gameinfo file to check for update with.");
+    }
 }
 fn parse_gameinfo(ginfo: String) -> GameInfo {
     let mut lines = ginfo.trim().lines();
@@ -503,7 +522,7 @@ fn download_prep(
     windows_force: bool,
 ) -> Result<(String, bool), Error> {
     if details.downloads.linux.is_some() && !windows_force {
-        let name = download(gog, details.downloads.linux.unwrap()).unwrap();
+        let name = download(&gog, details.downloads.linux.unwrap()).unwrap();
         return Ok((name, false));
     } else {
         if !windows_auto && !windows_force {
@@ -515,7 +534,7 @@ fn download_prep(
                 match choice.to_lowercase().as_str() {
                     "y" => {
                         println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
-                        let name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                        let name = download(&gog, details.downloads.windows.unwrap()).unwrap();
                         return Ok((name, true));
                     }
                     "n" => {
@@ -529,7 +548,7 @@ fn download_prep(
             if !windows_force {
                 println!("No linux version available. Downloading windows version.");
             }
-            let name = download(gog, details.downloads.windows.unwrap()).unwrap();
+            let name = download(&gog, details.downloads.windows.unwrap()).unwrap();
             return Ok((name, true));
         }
     }
@@ -623,7 +642,7 @@ fn list_owned(gog: Gog) -> Result<(), Error> {
     }
     Ok(())
 }
-fn download(gog: Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Error> {
+fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Error> {
     let mut names = vec![];
     for download in downloads.iter() {
         names.push(download.name.clone());

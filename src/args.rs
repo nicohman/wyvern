@@ -36,6 +36,12 @@ pub enum Wyvern {
         )]
         first: bool,
     },
+    #[cfg(feature = "eidolonint")]
+    #[structopt(
+        name = "update-eidolon",
+        about = "Update all eidolon-registered GOG games"
+    )]
+    UpdateEidolon {},
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),
     #[structopt(name = "install", about = "Install a GOG game from an installer")]
@@ -94,8 +100,8 @@ pub enum Sync {
     #[structopt(name = "db-push", about = "Push all save files in a database")]
     DbPush {
         #[structopt(parse(from_os_str))]
-        path: Option<PathBuf>
-    }
+        path: Option<PathBuf>,
+    },
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {
