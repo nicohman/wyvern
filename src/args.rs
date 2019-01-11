@@ -68,6 +68,16 @@ pub enum Wyvern {
 }
 #[derive(StructOpt, Debug)]
 pub enum Sync {
+    #[structopt(name = "saves", about = "Configure where a game's saves are located")]
+    Saves {
+        #[structopt(parse(from_os_str))]
+        game_dir: PathBuf,
+        #[structopt(parse(from_os_str))]
+        saves: PathBuf,
+        #[structopt(short = "d", long = "db", help = "Db to save config to")]
+        #[structopt(parse(from_os_str))]
+        db: Option<PathBuf>,
+    },
     #[structopt(name = "push", about = "Push save files to sync location")]
     Push {
         #[structopt(parse(from_os_str))]

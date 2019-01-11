@@ -51,7 +51,14 @@ fn main() -> Result<(), ::std::io::Error> {
     config.token = Some(config.token.unwrap().refresh().unwrap());
     print!("");
     let gog = Gog::new(config.token.clone().unwrap());
-    let sync_saves = config.sync_saves.clone();
+    let mut sync_saves = config.sync_saves.clone();
+    if sync_saves.is_some() {
+        sync_saves = Some(
+            sync_saves
+                .unwrap()
+                .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
+        );
+    }
     confy::store("wyvern", config)?;
     match args {
         List { id } => {
@@ -173,8 +180,6 @@ fn main() -> Result<(), ::std::io::Error> {
                     if sync_to.is_some() {
                         sync_saves = sync_to.unwrap().to_str().unwrap().to_string();
                     }
-                    sync_saves =
-                        sync_saves.replace("~", dirs::home_dir().unwrap().to_str().unwrap());
                     let gameinfo = File::open(game_dir.join("gameinfo"));
                     if gameinfo.is_ok() {
                         let mut ginfo_string = String::new();
@@ -208,14 +213,17 @@ fn main() -> Result<(), ::std::io::Error> {
                                     }
                                     break;
                                 }
+                                let save_path = std::env::current_dir()
+                                    .unwrap()
+                                    .join(PathBuf::from(&input.trim()));
                                 save_db.saves.insert(
                                     format!("{}", id),
                                     SaveInfo {
-                                        path: input.clone().trim().to_string(),
+                                        path: save_path.to_str().unwrap().to_string(),
                                         identifier: SaveType::GOG(id),
                                     },
                                 );
-                                path = PathBuf::from(input.trim());
+                                path = save_path;;
                                 save_db.store(&savedb_path).unwrap();
                             }
                             let mut path_string = path.to_str().unwrap().to_string();
@@ -363,8 +371,59 @@ fn main() -> Result<(), ::std::io::Error> {
                     println!("Synced {}", key);
                 }
             }
+            Sync(Saves {
+                game_dir,
+                saves,
+                db,
+            }) => {
+                let dpath: PathBuf;
+                if db.is_some() {
+                    println!("db");
+                    dpath = db.unwrap();
+                } else if sync_saves.is_some() {
+                    dpath = PathBuf::from(sync_saves.unwrap());
+                } else {
+                    println!("You have not specified a sync directory in the config yet. Specify one or call saves with a path to your db.");
+                    std::process::exit(0);
+                }
+                let dbpath = dpath.clone().join("savedb.json");
+                println!("{:?}", dbpath);
+                let mut savedb = SaveDB::load(dbpath.clone()).unwrap();
+                let gameinfo_path = game_dir.join("gameinfo");
+                if gameinfo_path.is_file() {
+                    let mut ginfo_string = String::new();
+                    File::open(&gameinfo_path)
+                        .unwrap()
+                        .read_to_string(&mut ginfo_string)
+                        .unwrap();
+                    let gameinfo = parse_gameinfo(ginfo_string);
+                    if let Ok(details) =
+                        gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
+                    {
+                        let id = details[0].id;
+                        savedb.saves.insert(
+                            format!("{}", id),
+                            SaveInfo {
+                                path: std::env::current_dir()
+                                    .unwrap()
+                                    .join(saves)
+                                    .to_str()
+                                    .unwrap()
+                                    .to_string(),
+                                identifier: SaveType::GOG(id),
+                            },
+                        );
+                        savedb.store(dbpath).unwrap();
+                    } else {
+                        println!("Could not find a game named {}.", gameinfo.name);
+                    }
+                } else {
+                    println!("No gameinfo")
+                }
+            }
             _ => println!("Wow, you should not be seeing this message."),
         },
+
         Update { mut path, force } => {
             if path.is_none() {
                 path = Some(PathBuf::from(".".to_string()));
