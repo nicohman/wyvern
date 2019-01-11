@@ -104,7 +104,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                         println!("Installing game");
                                         let mut installer = fs::File::open(name).unwrap();
                                         install(&mut installer, install_after.unwrap(), pname);
-                   ;
+;
                                     }
                                     break;
                                 } else {
@@ -386,10 +386,16 @@ fn main() -> Result<(), ::std::io::Error> {
                     println!("You have not specified a sync directory in the config yet. Specify one or call saves with a path to your db.");
                     std::process::exit(0);
                 }
-                let dbpath = dpath.clone().join("savedb.json");
+                let dbpath = std::env::current_dir()
+                    .unwrap()
+                    .join(dpath.clone())
+                    .join("savedb.json");
                 println!("{:?}", dbpath);
                 let mut savedb = SaveDB::load(dbpath.clone()).unwrap();
-                let gameinfo_path = game_dir.join("gameinfo");
+                let gameinfo_path = std::env::current_dir()
+                    .unwrap()
+                    .join(game_dir)
+                    .join("gameinfo");
                 if gameinfo_path.is_file() {
                     let mut ginfo_string = String::new();
                     File::open(&gameinfo_path)
