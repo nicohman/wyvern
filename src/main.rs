@@ -97,6 +97,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                         println!("Installing game");
                                         let mut installer = fs::File::open(name).unwrap();
                                         install(&mut installer, install_after.unwrap(), pname);
+                   ;
                                     }
                                     break;
                                 } else {
@@ -149,7 +150,7 @@ fn main() -> Result<(), ::std::io::Error> {
             }
         }
         #[cfg(feature = "eidolonint")]
-        UpdateEidolon {} => {
+        UpdateEidolon { force } => {
             use libeidolon::games::*;
             let eidolon_games = get_games();
             for game in eidolon_games {
@@ -158,7 +159,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         println!("Attempting to update {}", read.pname);
                         let path = PathBuf::from(read.command);
                         let ginfo_path = path.clone().join("gameinfo");
-                        update(&gog, path, ginfo_path, false);
+                        update(&gog, path, ginfo_path, force);
                     }
                 } else {
                     println!("Could not check {}", game);
@@ -251,6 +252,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 game_dir,
                 sync_from,
                 force,
+                ignore_older,
             }) => {
                 if sync_saves.is_some() {
                     let sync_saves = sync_saves
@@ -285,7 +287,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                         .path
                                         .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
                                 );
-                                sync(save_path, saved_path, force, false);
+                                sync(save_path, saved_path, force, ignore_older);
                             } else {
                                 println!("This game's saves have not been configured to be synced yet. Push first!");
                             }
@@ -330,7 +332,11 @@ fn main() -> Result<(), ::std::io::Error> {
                     println!("Synced {}", key);
                 }
             }
-            Sync(DbPush { path }) => {
+            Sync(DbPush {
+                path,
+                force,
+                ignore_older,
+            }) => {
                 let dpath: PathBuf;
                 if path.is_some() {
                     dpath = path.unwrap();
@@ -353,7 +359,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         folder_name = format!("gog_{}", id);
                     }
                     let mut dest_path = dpath.join("saves").join(&folder_name);
-                    sync(save_path, dest_path, false, false);
+                    sync(save_path, dest_path, force, ignore_older);
                     println!("Synced {}", key);
                 }
             }
@@ -366,7 +372,6 @@ fn main() -> Result<(), ::std::io::Error> {
             let path = path.unwrap();
 
             let game_info_path = path.clone().join("gameinfo");
-            println!("{:?}", game_info_path);
             update(&gog, path, game_info_path, force);
         }
         Connect { .. } => {

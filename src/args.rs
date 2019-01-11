@@ -41,7 +41,7 @@ pub enum Wyvern {
         name = "update-eidolon",
         about = "Update all eidolon-registered GOG games"
     )]
-    UpdateEidolon {},
+    UpdateEidolon { force: bool },
     #[structopt(name = "connect", about = "Operations associated with GOG Connect")]
     Connect(Connect),
     #[structopt(name = "install", about = "Install a GOG game from an installer")]
@@ -83,6 +83,12 @@ pub enum Sync {
         sync_from: Option<PathBuf>,
         #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
         force: bool,
+        #[structopt(
+            short = "i",
+            long = "ignore",
+            help = "Automatically refuse syncing save files that are older than the current"
+        )]
+        ignore_older: bool,
     },
     #[structopt(name = "db-pull", about = "Pull all save files from a database")]
     DbPull {
@@ -101,6 +107,14 @@ pub enum Sync {
     DbPush {
         #[structopt(parse(from_os_str))]
         path: Option<PathBuf>,
+        #[structopt(short = "f", long = "force", help = "Force syncing even if unneeded")]
+        force: bool,
+        #[structopt(
+            short = "i",
+            long = "ignore",
+            help = "Automatically refuse pushing save files that are older than the current"
+        )]
+        ignore_older: bool,
     },
 }
 #[derive(StructOpt, Debug)]
