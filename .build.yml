@@ -1,0 +1,29 @@
+image: archlinux
+packages:
+  - cargo
+  - rsync
+secrets:
+  -  dcfce43c-8472-4e5d-89f8-319e9ff7cb1c
+environment:
+  RUST_BACKTRACE: "1"
+sources:
+  - https://git.sr.ht/~nicohman/wyvern
+tasks:
+  - build: |
+      cd wyvern
+      cargo build
+  - setup: |
+      mkdir wyvern/target/debug/game_dir
+      mkdir wyvern/target/debug/knights
+  - test : |
+      cd wyvern/target/debug
+      ./wyvern down --search "Knights" --first
+      ./wyvern install Knights\ of\ Pen\ and\ Paper\ +1\ Edition knights/
+      echo "test" > knights/game/knightspp_Data/data.kopp
+      ./wyvern sync saves knights knights/game/knightspp_Data/data.kopp --db ./game_dir
+      ./wyvern sync push knights ./game_dir
+      rm knights/game/knightspp_Data/data.kopp
+      ./wyvern sync pull knights ./game_dir
+      cat knights/game/knightspp_Data/data.kopp
+triggers:
+- {action: email, condition: failure, to: Nico Hickman <nicohman@demenses.net>}
