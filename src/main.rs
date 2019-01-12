@@ -281,7 +281,7 @@ fn main() -> Result<(), ::std::io::Error> {
                             let mut savedb_path =
                                 PathBuf::from(sync_saves.clone()).join("savedb.json");
                             if sync_from.is_some() {
-                                savedb_path = sync_from.unwrap();
+                                savedb_path = sync_from.unwrap().join("savedb.json");
                             }
                             let mut save_db = SaveDB::load(&savedb_path).unwrap();
                             if save_db.saves.contains_key(&format!("{}", id)) {
