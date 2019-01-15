@@ -10,6 +10,8 @@ Wyvern is a command-line tool written in rust that is meant to make downloading 
 
 - GOG Connect functionality so you can scan for and claim games without leaving the terminal
 
+- Syncing save files to a filesystem backup(with integration with cloud services being worked on).
+
 - Optional(compile with the 'eidolonint' feature) integration with [eidolon](https://git.sr.ht/~nicohman/eidolon), so that it automatically registers installed games to eidolon.
 
 The GitHub repo is a mirror of the main [sr.ht](https://git.sr.ht/~nicohman/wyvern) repository.
@@ -25,6 +27,8 @@ git clone https://git.sr.ht/~nicohman/wyvern && cd wyvern
 cargo install --path . --force
 
 ```
+
+You can also download a binary that's automatically built from the latest git commit [on my website](https://demenses.net/downloads).
 
 ## Usage
 
@@ -47,8 +51,8 @@ SUBCOMMANDS:
     help       Prints this message or the help of the given subcommand(s)
     install    Install a GOG game from an installer
     ls         List all games you own
+    sync       Sync a game's saves to a specific location for backup
     update     Update a game if there is an update available
-
 ```
 
 ## Contributing/Reporting bugs
@@ -58,6 +62,6 @@ Please file isues at the [sr.ht issue tracker](https://todo.sr.ht/~nicohman/wyve
 
 ## Todo
 
-- Add in some form of cloud save support(Users will have to specify where their saves are for this to work)
+- Add in cloud integration with save file syncing.
 
 - Very happy to take feature requests!
