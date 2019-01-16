@@ -1,4 +1,4 @@
-# wyvern
+# wyvern [![builds.sr.ht status](https://builds.sr.ht/~nicohman/wyvern.svg)](https://builds.sr.ht/~nicohman/wyvern?)
 
 Wyvern is a command-line tool written in rust that is meant to make downloading GOG games and associated activities easier and faster on linux. It features: 
 
@@ -16,9 +16,17 @@ Wyvern is a command-line tool written in rust that is meant to make downloading 
 
 The GitHub repo is a mirror of the main [sr.ht](https://git.sr.ht/~nicohman/wyvern) repository.
 
+## See it working
+
+![A gif showing wyvern working](https://thumbs.gfycat.com/BriefPettyCrab-size_restricted.gif)
+
 ## Installation
 
-Right now, wyvern is still in alpha, so it's not on crates.io yet. If you want to use it, you can build it from source if you have cargo installed easily:
+Wyvern is available on [crates.io](https://crates.io/crates/wyvern), installable via cargo:
+
+`cargo install wyvern`
+
+You can download a binary that's automatically built from the latest git commit [on my website](https://demenses.net/downloads). If you want to, you can also build it from source if you have cargo installed easily:
 
 ```
 
@@ -28,15 +36,14 @@ cargo install --path . --force
 
 ```
 
-You can also download a binary that's automatically built from the latest git commit [on my website](https://demenses.net/downloads).
-
 ## Usage
 
 Run `wyvern help` for a list of commands:
 
 ```
-wyvern 0.1.0
+wyvern 1.0.0
 nicohman <nicohman@demenses.net>
+A simple CLI tool for installing and maintaining linux GOG games
 
 USAGE:
     wyvern <SUBCOMMAND>
