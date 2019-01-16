@@ -16,7 +16,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 human-panic = "1.0.1"
 confy = "0.3.1"
-gog = { git = "https://git.sr.ht/~nicohman/gogapi-rs", rev = "0da0a576"}
+gog = { git = "https://git.sr.ht/~nicohman/gogapi-rs", rev = "a45d51fc"}
 indicatif = "0.10.3"
 zip = "0.5"
 regex = "1"

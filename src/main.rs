@@ -637,7 +637,14 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
     let file = File::open("/tmp/data.zip").unwrap();
     // Extract code taken mostly from zip example
     let mut archive = zip::ZipArchive::new(file).unwrap();
-    for i in 0..archive.len() {
+    let len = archive.len();
+    let pb = ProgressBar::new(len as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}")
+            .progress_chars("#>-"),
+    );
+    for i in 0..len {
         let mut file = archive.by_index(i).unwrap();
         let filtered_path = file
             .sanitized_name()
@@ -665,7 +672,9 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
                 fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
             }
         }
+        pb.inc(1);
     }
+    pb.finish_with_message("Game installed!");
     #[cfg(feature = "eidolonint")]
     {
         use libeidolon::games::*;
