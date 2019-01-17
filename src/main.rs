@@ -598,10 +598,10 @@ fn download_prep(
         if !windows_auto && !windows_force {
             let mut choice = String::new();
             loop {
-                println!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
+                print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
                 io::stdout().flush().unwrap();
                 io::stdin().read_line(&mut choice).unwrap();
-                match choice.to_lowercase().as_str() {
+                match choice.to_lowercase().trim() {
                     "y" => {
                         println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
                         let name = download(&gog, details.downloads.windows.unwrap()).unwrap();
