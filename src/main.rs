@@ -77,6 +77,7 @@ fn main() -> Result<(), ::std::io::Error> {
             windows_auto,
             windows_force,
             first,
+            all,
         } => {
             if let Some(search) = search {
                 let search_results =
@@ -98,7 +99,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                     let details = gog.get_game_details(e[i].id).unwrap();
                                     let pname = details.title.clone();
                                     let (name, downloaded_windows) =
-                                        download_prep(gog, details, windows_auto, windows_force)
+                                        download_prep(&gog, details, windows_auto, windows_force)
                                             .unwrap();
                                     if install_after.is_some() && !downloaded_windows {
                                         println!("Installing game");
@@ -120,7 +121,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         let details = gog.get_game_details(e[0].id).unwrap();
                         let pname = details.title.clone();
                         let (name, downloaded_windows) =
-                            download_prep(gog, details, windows_auto, windows_force).unwrap();
+                            download_prep(&gog, details, windows_auto, windows_force).unwrap();
                         if install_after.is_some() && !downloaded_windows {
                             println!("Installing game");
                             let mut installer = fs::File::open(name).unwrap();
@@ -134,12 +135,22 @@ fn main() -> Result<(), ::std::io::Error> {
                 let details = gog.get_game_details(id).unwrap();
                 let pname = details.title.clone();
                 let (name, downloaded_windows) =
-                    download_prep(gog, details, windows_auto, windows_force).unwrap();
+                    download_prep(&gog, details, windows_auto, windows_force).unwrap();
 
                 if install_after.is_some() && !downloaded_windows {
                     println!("Installing game");
                     let mut installer = fs::File::open(name).unwrap();
                     install(&mut installer, install_after.unwrap(), pname);
+                }
+            } else if all {
+                println!("Downloading all games in library");
+                let games = gog.get_games().unwrap();
+                for game in games {
+                    let details = gog.get_game_details(game).unwrap();
+                    download_prep(&gog, details, windows_auto, windows_force).unwrap();
+                }
+                if install_after.is_some() {
+                    println!("--install does not work with --all");
                 }
             } else {
                 println!("Did not specify a game to download. Exiting.");
@@ -586,13 +597,13 @@ fn sync(sync_from: PathBuf, sync_to: PathBuf, ignore_older: bool, force: bool) {
         .unwrap();
 }
 fn download_prep(
-    gog: Gog,
+    gog: &Gog,
     details: GameDetails,
     windows_auto: bool,
     windows_force: bool,
 ) -> Result<(String, bool), Error> {
     if details.downloads.linux.is_some() && !windows_force {
-        let name = download(&gog, details.downloads.linux.unwrap()).unwrap();
+        let name = download(gog, details.downloads.linux.unwrap()).unwrap();
         return Ok((name, false));
     } else {
         if !windows_auto && !windows_force {

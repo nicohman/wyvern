@@ -35,6 +35,8 @@ pub enum Wyvern {
             help = "When searching, use first result without waiting for selection"
         )]
         first: bool,
+        #[structopt(short = "a", long = "all", help = "Download all games in your library")]
+        all: bool,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(
