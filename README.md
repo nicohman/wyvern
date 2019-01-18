@@ -36,6 +36,8 @@ cargo install --path . --force
 
 ```
 
+Plus, it's available on the AUR as [wyvern](https://aur.archlinux.org/packages/wyvern), helpfully maintained by [@PinkCathodeCat@cathoderay.tube](https://cathoderay.tube/users/PinkCathodeCat).
+
 ## Usage
 
 Run `wyvern help` for a list of commands:
