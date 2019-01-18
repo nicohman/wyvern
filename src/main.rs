@@ -14,6 +14,7 @@ extern crate gog;
 extern crate indicatif;
 #[cfg(feature = "eidolonint")]
 extern crate libeidolon;
+extern crate rayon;
 extern crate regex;
 use regex::Regex;
 mod args;
@@ -31,6 +32,7 @@ use gog::Error;
 use gog::ErrorKind::*;
 use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use std::fs;
 use std::fs::*;
 use std::io;
@@ -655,7 +657,8 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}")
             .progress_chars("#>-"),
     );
-    for i in 0..len {
+    (0..len).into_par_iter().for_each(|i| {
+        let mut archive = zip::ZipArchive::new(File::open("/tmp/data.zip").unwrap()).unwrap();
         let mut file = archive.by_index(i).unwrap();
         let filtered_path = file
             .sanitized_name()
@@ -684,7 +687,7 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
             }
         }
         pb.inc(1);
-    }
+    });
     pb.finish_with_message("Game installed!");
     #[cfg(feature = "eidolonint")]
     {
