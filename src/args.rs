@@ -37,6 +37,24 @@ pub enum Wyvern {
         first: bool,
         #[structopt(short = "a", long = "all", help = "Download all games in your library")]
         all: bool,
+        #[structopt(
+            short = "d",
+            long = "desktop",
+            help = "Add a desktop shortcut for the installed game"
+        )]
+        desktop: bool,
+        #[structopt(
+            short = "m",
+            long = "menu",
+            help = "Add an application menu shortcut for the installed game"
+        )]
+        menu: bool,
+        #[structopt(
+            short = "c",
+            long = "shortcuts",
+            help = "Add both kinds of shortcuts for the installed game"
+        )]
+        shortcuts: bool,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(
@@ -51,6 +69,24 @@ pub enum Wyvern {
         installer_name: String,
         #[structopt(parse(from_os_str))]
         path: PathBuf,
+        #[structopt(
+            short = "d",
+            long = "desktop",
+            help = "Add a desktop shortcut for the installed game"
+        )]
+        desktop: bool,
+        #[structopt(
+            short = "m",
+            long = "menu",
+            help = "Add an application menu shortcut for the installed game"
+        )]
+        menu: bool,
+        #[structopt(
+            short = "c",
+            long = "shortcuts",
+            help = "Add both kinds of shortcuts for the installed game"
+        )]
+        shortcuts: bool,
     },
     #[structopt(
         name = "update",

@@ -80,7 +80,14 @@ fn main() -> Result<(), ::std::io::Error> {
             windows_force,
             first,
             all,
+            mut desktop,
+            mut menu,
+            shortcuts,
         } => {
+            if shortcuts {
+                desktop = true;
+                menu = true;
+            }
             if let Some(search) = search {
                 let search_results =
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
@@ -106,7 +113,13 @@ fn main() -> Result<(), ::std::io::Error> {
                                     if install_after.is_some() && !downloaded_windows {
                                         println!("Installing game");
                                         let mut installer = fs::File::open(name).unwrap();
-                                        install(&mut installer, install_after.unwrap(), pname);
+                                        install(
+                                            &mut installer,
+                                            install_after.unwrap(),
+                                            pname,
+                                            desktop,
+                                            menu,
+                                        );
 ;
                                     }
                                     break;
@@ -127,7 +140,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         if install_after.is_some() && !downloaded_windows {
                             println!("Installing game");
                             let mut installer = fs::File::open(name).unwrap();
-                            install(&mut installer, install_after.unwrap(), pname);
+                            install(&mut installer, install_after.unwrap(), pname, desktop, menu);
                         }
                     }
                 } else {
@@ -142,7 +155,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 if install_after.is_some() && !downloaded_windows {
                     println!("Installing game");
                     let mut installer = fs::File::open(name).unwrap();
-                    install(&mut installer, install_after.unwrap(), pname);
+                    install(&mut installer, install_after.unwrap(), pname, desktop, menu);
                 }
             } else if all {
                 println!("Downloading all games in library");
@@ -161,10 +174,17 @@ fn main() -> Result<(), ::std::io::Error> {
         Install {
             installer_name,
             path,
+            mut desktop,
+            mut menu,
+            shortcuts,
         } => {
+            if shortcuts {
+                desktop = true;
+                menu = true;
+            }
             let mut installer = File::open(&installer_name);
             if installer.is_ok() {
-                install(&mut installer.unwrap(), path, installer_name);
+                install(&mut installer.unwrap(), path, installer_name, desktop, menu);
             } else {
                 println!("File {} does not exist", installer_name)
             }
@@ -535,7 +555,7 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool) {
                 let name = download(&gog, downloads).unwrap();
                 println!("Installing.");
                 let mut installer = File::open(name.clone()).unwrap();
-                install(&mut installer, path, name);
+                install(&mut installer, path, name, false, false);
                 println!("Game finished updating!");
             }
         } else {
@@ -636,7 +656,7 @@ fn download_prep(
         }
     }
 }
-fn install(installer: &mut File, path: PathBuf, name: String) {
+fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, menu: bool) {
     extract(
         installer,
         "/tmp",
@@ -706,6 +726,44 @@ fn install(installer: &mut File, path: PathBuf, name: String) {
             typeg: GameType::WyvernGOG,
         };
         add_game(game);
+        println!("Added game to eidolon registry!");
+    }
+    if menu || desktop {
+        let game_path = std::env::current_dir().unwrap().join(&path);
+        let shortcut = desktop_shortcut(name.as_str(), &path);
+        if menu {
+            let desktop_path = dirs::home_dir().unwrap().join(format!(
+                ".local/share/applications/gog_com-{}_1.desktop",
+                name
+            ));
+            let fd = File::create(&desktop_path);
+            if fd.is_ok() {
+                fd.unwrap()
+                    .write(shortcut.as_str().as_bytes())
+                    .expect("Couldn't write to menu shortcut");
+            } else {
+                println!(
+                    "Could not create menu shortcut due to following error:\n{}",
+                    fd.err().unwrap()
+                );
+            }
+        }
+        if desktop {
+            let desktop_path = dirs::home_dir()
+                .unwrap()
+                .join(format!("Desktop/gog_com-{}_1.desktop", name));
+            let fd = File::create(&desktop_path);
+            if fd.is_ok() {
+                fd.unwrap()
+                    .write(shortcut.as_str().as_bytes())
+                    .expect("Couldn't write to desktop shortcut");
+            } else {
+                println!(
+                    "Could not create desktop shortcut due to following error:\n{}",
+                    fd.err().unwrap()
+                );
+            }
+        }
     }
 }
 pub fn login() -> Token {
@@ -768,3 +826,21 @@ fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Err
     println!("Done downloading!");
     return Ok(names[0].clone());
 }
+fn desktop_shortcut<N: Into<String>>(name: N, path: &std::path::Path) -> String {
+    let name = name.into();
+    let path = std::env::current_dir().unwrap().join(path);
+    format!("[Desktop Entry]\nEncoding=UTF-8\nValue=1.0\nType=Application\nName={}\nGenericName={}\nComment={}\nIcon={}\nExec=\"{}\" \"\"\nCategories=Game;\nPath={}",name,name,name,path.join("support/icon.png").to_str().unwrap(),path.join("start.sh").to_str().unwrap(), path.to_str().unwrap())
+}
+/*
+[Desktop Entry]
+Encoding=UTF-8
+Value=1.0
+Type=Application
+Name=Darkest Dungeon
+GenericName=Darkest Dungeon
+Comment=Darkest Dungeon
+Icon=/home/nicohman/Games/Darkest Dungeon/support/icon.png
+Exec="/home/nicohman/Games/Darkest Dungeon/start.sh" ""
+Categories=Game;
+Path=/home/nicohman/Games/Darkest Dungeon
+*/
