@@ -802,28 +802,36 @@ fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Err
     }
     let mut responses = gog.download_game(downloads);
     let count = responses.len();
-    for (idx, mut response) in responses.iter_mut().enumerate() {
-        let total_size = response
-            .headers()
-            .get("Content-Length")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .parse()
-            .unwrap();
-        let pb = ProgressBar::new(total_size);
-        pb.set_style(ProgressStyle::default_bar()
+    for (idx, mut response) in responses.into_iter().enumerate() {
+        if response.is_err() {
+            println!(
+                "Error downloading file. Error message:{}",
+                response.err().unwrap()
+            );
+        } else {
+            let response = response.unwrap();
+            let total_size = response
+                .headers()
+                .get("Content-Length")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let pb = ProgressBar::new(total_size);
+            pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .progress_chars("#>-"));
-        let name = names[idx].clone();
-        println!("Downloading {}, {} of {}", name, idx + 1, count);
-        let mut fd = fs::File::create(name.clone())?;
-        let mut perms = fd.metadata()?.permissions();
-        perms.set_mode(0o744);
-        fd.set_permissions(perms)?;
-        let mut pb_read = pb.wrap_read(response);
-        io::copy(&mut pb_read, &mut fd)?;
-        pb.finish();
+            let name = names[idx].clone();
+            println!("Downloading {}, {} of {}", name, idx + 1, count);
+            let mut fd = fs::File::create(name.clone())?;
+            let mut perms = fd.metadata()?.permissions();
+            perms.set_mode(0o744);
+            fd.set_permissions(perms)?;
+            let mut pb_read = pb.wrap_read(response);
+            io::copy(&mut pb_read, &mut fd)?;
+            pb.finish();
+        }
     }
     println!("Done downloading!");
     return Ok(names[0].clone());
