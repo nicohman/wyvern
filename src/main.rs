@@ -907,9 +907,12 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
             let fd = File::create(&desktop_path);
             if fd.is_ok() {
                 info!("Writing to file.");
-                fd.unwrap()
-                    .write(shortcut.as_str().as_bytes())
+                let mut fd = fd.unwrap();
+                fd.write(shortcut.as_str().as_bytes())
                     .expect("Couldn't write to desktop shortcut");
+                info!("Setting permissions");
+                fd.set_permissions(Permissions::from_mode(0o0774))
+                    .expect("Couldn't make desktop shortcut executable");
             } else {
                 error!(
                     "Could not create desktop shortcut. Error: {}",
@@ -955,32 +958,40 @@ fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Err
         names.push(download.name.clone());
     }
     info!("Getting responses to requests");
-    let mut responses = gog.download_game(downloads);
+    let responses = gog.download_game(downloads);
     let count = responses.len();
-    for (idx, mut response) in responses.iter_mut().enumerate() {
-        let total_size = response
-            .headers()
-            .get("Content-Length")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .parse()
-            .unwrap();
-        let pb = ProgressBar::new(total_size);
-        pb.set_style(ProgressStyle::default_bar()
+    for (idx, mut response) in responses.into_iter().enumerate() {
+        if response.is_err() {
+            println!(
+                "Error downloading file. Error message:{}",
+                response.err().unwrap()
+            );
+        } else {
+            let response = response.unwrap();
+            let total_size = response
+                .headers()
+                .get("Content-Length")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap();
+            let pb = ProgressBar::new(total_size);
+            pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .progress_chars("#>-"));
-        let name = names[idx].clone();
-        println!("Downloading {}, {} of {}", name, idx + 1, count);
-        info!("Creating file");
-        let mut fd = fs::File::create(name.clone())?;
-        let mut perms = fd.metadata()?.permissions();
-        info!("Setting permissions to executable");
-        perms.set_mode(0o744);
-        fd.set_permissions(perms)?;
-        let mut pb_read = pb.wrap_read(response);
-        io::copy(&mut pb_read, &mut fd)?;
-        pb.finish();
+            let name = names[idx].clone();
+            println!("Downloading {}, {} of {}", name, idx + 1, count);
+            info!("Creating file");
+            let mut fd = fs::File::create(name.clone())?;
+            let mut perms = fd.metadata()?.permissions();
+            info!("Setting permissions to executable");
+            perms.set_mode(0o744);
+            fd.set_permissions(perms)?;
+            let mut pb_read = pb.wrap_read(response);
+            io::copy(&mut pb_read, &mut fd)?;
+            pb.finish();
+        }
     }
     println!("Done downloading!");
     return Ok(names[0].clone());
