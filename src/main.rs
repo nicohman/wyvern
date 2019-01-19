@@ -754,9 +754,11 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
                 .join(format!("Desktop/gog_com-{}_1.desktop", name));
             let fd = File::create(&desktop_path);
             if fd.is_ok() {
-                fd.unwrap()
-                    .write(shortcut.as_str().as_bytes())
+                let mut fd = fd.unwrap();
+                fd.write(shortcut.as_str().as_bytes())
                     .expect("Couldn't write to desktop shortcut");
+                fd.set_permissions(Permissions::from_mode(0o0774))
+                    .expect("Couldn't make desktop shortcut executable");
             } else {
                 println!(
                     "Could not create desktop shortcut due to following error:\n{}",
@@ -831,16 +833,3 @@ fn desktop_shortcut<N: Into<String>>(name: N, path: &std::path::Path) -> String 
     let path = std::env::current_dir().unwrap().join(path);
     format!("[Desktop Entry]\nEncoding=UTF-8\nValue=1.0\nType=Application\nName={}\nGenericName={}\nComment={}\nIcon={}\nExec=\"{}\" \"\"\nCategories=Game;\nPath={}",name,name,name,path.join("support/icon.png").to_str().unwrap(),path.join("start.sh").to_str().unwrap(), path.to_str().unwrap())
 }
-/*
-[Desktop Entry]
-Encoding=UTF-8
-Value=1.0
-Type=Application
-Name=Darkest Dungeon
-GenericName=Darkest Dungeon
-Comment=Darkest Dungeon
-Icon=/home/nicohman/Games/Darkest Dungeon/support/icon.png
-Exec="/home/nicohman/Games/Darkest Dungeon/start.sh" ""
-Categories=Game;
-Path=/home/nicohman/Games/Darkest Dungeon
-*/
