@@ -38,6 +38,7 @@ use regex::Regex;
 use std::fs;
 use std::fs::*;
 use std::io;
+use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -803,7 +804,7 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
     info!("Opening extracted zip");
     let file = File::open("/tmp/data.zip").unwrap();
     // Extract code taken mostly from zip example
-    let archive = zip::ZipArchive::new(file).unwrap();
+    let archive = zip::ZipArchive::new(BufReader::new(file)).unwrap();
     let len = archive.len();
     let pb = ProgressBar::new(len as u64);
     pb.set_style(
@@ -814,7 +815,8 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
     info!("Starting zip extraction process");
     (0..len).into_par_iter().for_each(|i| {
         info!("Starting extraction of file #{}. Opening archive", i);
-        let mut archive = zip::ZipArchive::new(File::open("/tmp/data.zip").unwrap()).unwrap();
+        let mut archive =
+            zip::ZipArchive::new(BufReader::new(File::open("/tmp/data.zip").unwrap())).unwrap();
         info!("Getting file from archive");
         let mut file = archive.by_index(i).unwrap();
         let filtered_path = file
