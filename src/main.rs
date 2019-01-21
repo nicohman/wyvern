@@ -10,9 +10,11 @@ extern crate serde_derive;
 extern crate log;
 extern crate clap_verbosity_flag;
 extern crate confy;
+extern crate crc;
 extern crate dirs;
 extern crate gog;
 extern crate indicatif;
+extern crate inflate;
 extern crate rayon;
 extern crate regex;
 extern crate serde;
@@ -26,6 +28,7 @@ use crate::args::Wyvern;
 use crate::args::Wyvern::Download;
 use crate::args::Wyvern::*;
 use crate::config::*;
+use crc::crc32;
 use gog::extract::*;
 use gog::gog::{connect::ConnectGameStatus::*, connect::*, FilterParam::*, *};
 use gog::token::Token;
@@ -35,11 +38,15 @@ use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use regex::Regex;
+use std::env::current_dir;
 use std::fs;
 use std::fs::*;
 use std::io;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom::*;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -235,7 +242,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         println!("Attempting to update {}", read.pname);
                         let path = PathBuf::from(read.command);
                         let ginfo_path = path.clone().join("gameinfo");
-                        update(&gog, path, ginfo_path, force);
+                        update(&gog, path, ginfo_path, force, false);
                     }
                 } else {
                     println!("Could not check {}", game);
@@ -295,9 +302,8 @@ fn main() -> Result<(), ::std::io::Error> {
                                     }
                                     break;
                                 }
-                                let save_path = std::env::current_dir()
-                                    .unwrap()
-                                    .join(PathBuf::from(&input.trim()));
+                                let save_path =
+                                    current_dir().unwrap().join(PathBuf::from(&input.trim()));
                                 info!("Inserting saveinfo into savedb");
                                 save_db.saves.insert(
                                     format!("{}", id),
@@ -501,16 +507,13 @@ fn main() -> Result<(), ::std::io::Error> {
                     error!("You have not specified a sync directory in the config yet. Specify one or call saves with a path to your db.");
                     std::process::exit(0);
                 }
-                let dbpath = std::env::current_dir()
+                let dbpath = current_dir()
                     .unwrap()
                     .join(dpath.clone())
                     .join("savedb.json");
                 info!("Loading savedb");
                 let mut savedb = SaveDB::load(dbpath.clone()).unwrap();
-                let gameinfo_path = std::env::current_dir()
-                    .unwrap()
-                    .join(game_dir)
-                    .join("gameinfo");
+                let gameinfo_path = current_dir().unwrap().join(game_dir).join("gameinfo");
                 if gameinfo_path.is_file() {
                     let mut ginfo_string = String::new();
                     info!("Opening and reading gameinfo file");
@@ -527,7 +530,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         savedb.saves.insert(
                             format!("{}", id),
                             SaveInfo {
-                                path: std::env::current_dir()
+                                path: current_dir()
                                     .unwrap()
                                     .join(saves)
                                     .to_str()
@@ -552,6 +555,7 @@ fn main() -> Result<(), ::std::io::Error> {
             mut path,
             force,
             verbose,
+            delta,
         } => {
             verbose
                 .setup_env_logger("wyvern")
@@ -563,7 +567,7 @@ fn main() -> Result<(), ::std::io::Error> {
             let path = path.unwrap();
             let game_info_path = path.clone().join("gameinfo");
             info!("Updating game");
-            update(&gog, path, game_info_path, force);
+            update(&gog, path, game_info_path, force, delta);
         }
         Connect { .. } => {
             let uid: i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
@@ -631,7 +635,7 @@ fn main() -> Result<(), ::std::io::Error> {
     };
     Ok(())
 }
-fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool) {
+fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta: bool) {
     if let Ok(mut gameinfo) = File::open(&game_info_path) {
         let regex = Regex::new(r"(.*) \(gog").unwrap();
         let mut ginfo_string = String::new();
@@ -651,30 +655,112 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool) {
                 .downloads
                 .linux
                 .expect("Game has no linux downloads");
-            info!("Using regex to fetch version string");
-            let current_version = regex
-                .captures(&(downloads[0].version.clone().unwrap()))
-                .unwrap()[1]
-                .trim()
-                .to_string();
-            println!(
-                "Installed version : {}. Version Online: {}",
-                version, current_version
-            );
-            if version == current_version && !force {
-                println!("No newer version to update to. Sorry!");
-            } else {
-                if force && version == current_version {
-                    println!("Forcing reinstall due to --force option.");
+            if delta {
+                info!("Using delta-based updating");
+                let data = gog.extract_data(downloads).unwrap();
+                println!("{:?}", data);
+                for file in data.files {
+                    if !file.filename.contains("meta") && !file.filename.contains("scripts") {
+                        let path = game_info_path
+                            .parent()
+                            .unwrap()
+                            .join(&file.filename.replace("/noarch", "").replace("data/", ""));
+                        let is_dir = path.extension().is_none()
+                            || file.filename.clone().pop().unwrap() == '/';
+                        if path.is_file() {
+                            info!("Checking file {:?}", path);
+                            let mut buffer = vec![];
+                            info!("Opening file");
+                            let mut fd =
+                                File::open(&path).expect(&format!("Couldn't open file {:?}", path));
+                            fd.read_to_end(&mut buffer).unwrap();
+                            let checksum = crc32::checksum_ieee(buffer.as_slice());
+                            if checksum == file.crc32 {
+                                info!("File {:?} is the same", path);
+                                continue;
+                            }
+                            println!("File {:?} is different. Downloading.", path);
+                        } else if !path.exists() && is_dir {
+                            continue;
+                        } else if is_dir {
+                            fs::create_dir_all(path);
+                            continue;
+                        } else {
+                            println!("File {:?} does not exist. Downloading.", path);
+                        }
+                        fs::create_dir_all(path.parent().unwrap());
+                        info!("Fetching file from installer");
+                        let mut bytes = gog
+                            .download_request_range(
+                                &data.url,
+                                file.start_offset as i64,
+                                file.end_offset as i64,
+                            )
+                            .unwrap();
+                        let bytes_len = bytes.len();
+                        let mut bytes_cur = Cursor::new(bytes);
+                        let mut header_buffer = [0; 4];
+                        bytes_cur.read_exact(&mut header_buffer).unwrap();
+                        if u32::from_le_bytes(header_buffer) != 0x04034b50 {
+                            error!("Bad local file header");
+                        }
+                        bytes_cur.seek(Start(28)).unwrap();
+                        let mut buffer = [0; 2];
+                        info!("Reading length of extra field");
+                        bytes_cur.read_exact(&mut buffer).unwrap();
+                        let extra_length = u16::from_le_bytes(buffer);
+                        info!("Seeking to beginning of file");
+                        bytes_cur
+                            .seek(Current((file.filename_length + extra_length) as i64))
+                            .unwrap();
+                        let mut bytes = vec![0; bytes_len - bytes_cur.position() as usize];
+                        bytes_cur.read_exact(&mut bytes).unwrap();
+                        let mut fd = OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .open(&path)
+                            .expect(&format!("Couldn't open file {:?}", path));
+                        if file.external_file_attr != Some(0) {
+                            info!("Setting permissions");
+                            fd.set_permissions(Permissions::from_mode(
+                                file.external_file_attr.unwrap() >> 16,
+                            ))
+                            .expect("Couldn't set permissions");
+                        }
+                        info!("Decompressing file");
+                        let def = inflate::inflate_bytes(bytes.as_slice()).unwrap();
+                        info!("Writing decompressed file to disk");
+                        fd.write_all(&def)
+                            .expect(&format!("Couldn't write to file {:?}", path));
+                    }
                 }
-                println!("Updating {} to version {}", name, current_version);
-                let name = download(&gog, downloads).unwrap();
-                println!("Installing.");
-                info!("Opening installer file");
-                let mut installer = File::open(name.clone()).unwrap();
-                info!("Starting installation");
-                install(&mut installer, path, name, false, false);
-                println!("Game finished updating!");
+            } else {
+                info!("Using regex to fetch version string");
+
+                let current_version = regex
+                    .captures(&(downloads[0].version.clone().unwrap()))
+                    .unwrap()[1]
+                    .trim()
+                    .to_string();
+                println!(
+                    "Installed version : {}. Version Online: {}",
+                    version, current_version
+                );
+                if version == current_version && !force {
+                    println!("No newer version to update to. Sorry!");
+                } else {
+                    if force && version == current_version {
+                        println!("Forcing reinstall due to --force option.");
+                    }
+                    println!("Updating {} to version {}", name, current_version);
+                    let name = download(&gog, downloads).unwrap();
+                    println!("Installing.");
+                    info!("Opening installer file");
+                    let mut installer = File::open(name.clone()).unwrap();
+                    info!("Starting installation");
+                    install(&mut installer, path, name, false, false);
+                    println!("Game finished updating!");
+                }
             }
         } else {
             error!("Could not find game on GOG");
@@ -865,11 +951,7 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
         let game = Game {
             name: proc_name,
             pname: name,
-            command: std::env::current_dir()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
+            command: current_dir().unwrap().to_str().unwrap().to_string(),
             typeg: GameType::WyvernGOG,
         };
         info!("Adding game to eidolon");
@@ -878,7 +960,7 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
     }
     if menu || desktop {
         info!("Creating shortcuts");
-        let game_path = std::env::current_dir().unwrap().join(&path);
+        let game_path = current_dir().unwrap().join(&path);
         info!("Creating text of shortcut");
         let shortcut = desktop_shortcut(name.as_str(), &game_path);
         if menu {
@@ -1000,6 +1082,6 @@ fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Err
 }
 fn desktop_shortcut<N: Into<String>>(name: N, path: &std::path::Path) -> String {
     let name = name.into();
-    let path = std::env::current_dir().unwrap().join(path);
+    let path = current_dir().unwrap().join(path);
     format!("[Desktop Entry]\nEncoding=UTF-8\nValue=1.0\nType=Application\nName={}\nGenericName={}\nComment={}\nIcon={}\nExec=\"{}\" \"\"\nCategories=Game;\nPath={}",name,name,name,path.join("support/icon.png").to_str().unwrap(),path.join("start.sh").to_str().unwrap(), path.to_str().unwrap())
 }

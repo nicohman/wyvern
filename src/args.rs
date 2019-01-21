@@ -108,6 +108,8 @@ pub enum Wyvern {
         force: bool,
         #[structopt(flatten)]
         verbose: clap_verbosity_flag::Verbosity,
+        #[structopt(short = "d", long = "delta", help = "Update only changed files")]
+        delta: bool,
     },
     #[structopt(
         name = "sync",
