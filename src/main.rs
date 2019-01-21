@@ -230,7 +230,11 @@ fn main() -> Result<(), ::std::io::Error> {
             }
         }
         #[cfg(feature = "eidolonint")]
-        UpdateEidolon { force, verbose } => {
+        UpdateEidolon {
+            force,
+            verbose,
+            delta,
+        } => {
             verbose
                 .setup_env_logger("wyvern")
                 .expect("Couldn't set up logger");
@@ -242,7 +246,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         println!("Attempting to update {}", read.pname);
                         let path = PathBuf::from(read.command);
                         let ginfo_path = path.clone().join("gameinfo");
-                        update(&gog, path, ginfo_path, force, false);
+                        update(&gog, path, ginfo_path, force, delta);
                     }
                 } else {
                     println!("Could not check {}", game);
