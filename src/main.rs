@@ -663,7 +663,8 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                 info!("Using delta-based updating");
                 let data = gog.extract_data(downloads).unwrap();
                 println!("{:?}", data);
-                for file in data.files {
+                let access_token = gog.token.borrow().access_token.clone();
+                data.files.par_iter().for_each(|file| {
                     if !file.filename.contains("meta") && !file.filename.contains("scripts") {
                         let path = game_info_path
                             .parent()
@@ -681,26 +682,26 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                             let checksum = crc32::checksum_ieee(buffer.as_slice());
                             if checksum == file.crc32 {
                                 info!("File {:?} is the same", path);
-                                continue;
+                                return;
                             }
                             println!("File {:?} is different. Downloading.", path);
                         } else if !path.exists() && is_dir {
-                            continue;
+                            return;
                         } else if is_dir {
                             fs::create_dir_all(path);
-                            continue;
+                            return;
                         } else {
                             println!("File {:?} does not exist. Downloading.", path);
                         }
                         fs::create_dir_all(path.parent().unwrap());
                         info!("Fetching file from installer");
-                        let mut bytes = gog
-                            .download_request_range(
-                                &data.url,
-                                file.start_offset as i64,
-                                file.end_offset as i64,
-                            )
-                            .unwrap();
+                        let mut bytes = Gog::download_request_range_at(
+                            access_token.as_str(),
+                            data.url.as_str(),
+                            file.start_offset as i64,
+                            file.end_offset as i64,
+                        )
+                        .unwrap();
                         let bytes_len = bytes.len();
                         let mut bytes_cur = Cursor::new(bytes);
                         let mut header_buffer = [0; 4];
@@ -737,7 +738,7 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                         fd.write_all(&def)
                             .expect(&format!("Couldn't write to file {:?}", path));
                     }
-                }
+                });
             } else {
                 info!("Using regex to fetch version string");
 
