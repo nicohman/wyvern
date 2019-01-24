@@ -1,4 +1,4 @@
-# wyvern [![builds.sr.ht status](https://builds.sr.ht/~nicohman/wyvern.svg)](https://builds.sr.ht/~nicohman/wyvern?)
+# wyvern ![](https://img.shields.io/crates/v/wyvern.svg?style=flat-square) [![builds.sr.ht status](https://builds.sr.ht/~nicohman/wyvern.svg)](https://builds.sr.ht/~nicohman/wyvern?)
 
 Wyvern is a command-line tool written in rust that is meant to make downloading GOG games and associated activities easier and faster on linux. It features: 
 
