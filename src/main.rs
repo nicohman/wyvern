@@ -661,8 +661,19 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                 .expect("Game has no linux downloads");
             if delta {
                 info!("Using delta-based updating");
+                println!("Fetching installer data.");
                 let data = gog.extract_data(downloads).unwrap();
-                println!("{:?}", data);
+                println!("Fetched installer data. Checking files.");
+                io::stdout().flush();
+
+                let pb = ProgressBar::new(data.files.len() as u64);
+                pb.set_style(
+                    ProgressStyle::default_bar()
+                        .template(
+                            "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}",
+                        )
+                        .progress_chars("#>-"),
+                );
                 let access_token = gog.token.borrow().access_token.clone();
                 data.files.par_iter().for_each(|file| {
                     if !file.filename.contains("meta") && !file.filename.contains("scripts") {
@@ -682,26 +693,32 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                             let checksum = crc32::checksum_ieee(buffer.as_slice());
                             if checksum == file.crc32 {
                                 info!("File {:?} is the same", path);
+                                pb.inc(1);
                                 return;
                             }
-                            println!("File {:?} is different. Downloading.", path);
+                            pb.println(format!("File {:?} is different. Downloading.", path));
                         } else if !path.exists() && is_dir {
+                            pb.inc(1);
                             return;
                         } else if is_dir {
                             fs::create_dir_all(path);
+                            pb.inc(1);
                             return;
                         } else {
-                            println!("File {:?} does not exist. Downloading.", path);
+                            pb.println(format!("File {:?} does not exist. Downloading.", path));
                         }
                         fs::create_dir_all(path.parent().unwrap());
                         info!("Fetching file from installer");
-                        let mut bytes = Gog::download_request_range_at(
+                        let mut easy = Gog::download_request_range_at(
                             access_token.as_str(),
                             data.url.as_str(),
+                            gog::Collector(Vec::new()),
                             file.start_offset as i64,
                             file.end_offset as i64,
                         )
                         .unwrap();
+                        let mut bytes = easy.get_ref().0.clone();
+                        drop(easy);
                         let bytes_len = bytes.len();
                         let mut bytes_cur = Cursor::new(bytes);
                         let mut header_buffer = [0; 4];
@@ -737,8 +754,10 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                         info!("Writing decompressed file to disk");
                         fd.write_all(&def)
                             .expect(&format!("Couldn't write to file {:?}", path));
+                        pb.inc(1);
                     }
                 });
+                pb.finish_with_message("Updated game!");
             } else {
                 info!("Using regex to fetch version string");
 
