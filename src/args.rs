@@ -1,15 +1,20 @@
 use std::path::PathBuf;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "wyvern")]
-pub enum Wyvern {
+pub struct Wyvern {
+    #[structopt(flatten)]
+    pub verbose: clap_verbosity_flag::Verbosity,
+    #[structopt(subcommand)]
+    pub command: Command,
+}
+#[derive(StructOpt, Debug)]
+pub enum Command {
     #[structopt(name = "ls", about = "List all games you own")]
     List {
         #[structopt(short = "i", long = "id", help = "search with id")]
         id: Option<i64>,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
-    #[structopt(name = "down", about = "Download specific game")]
+    #[structopt(name = "down", alias = "download", about = "Download specific game")]
     Download {
         #[structopt(short = "i", long = "id", help = "download id")]
         id: Option<i64>,
@@ -56,8 +61,6 @@ pub enum Wyvern {
             help = "Add both kinds of shortcuts for the installed game"
         )]
         shortcuts: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(
@@ -96,8 +99,6 @@ pub enum Wyvern {
             help = "Add both kinds of shortcuts for the installed game"
         )]
         shortcuts: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[structopt(
         name = "update",
@@ -108,8 +109,6 @@ pub enum Wyvern {
         path: Option<PathBuf>,
         #[structopt(short = "f", long = "force", help = "Force updating even if unneeded")]
         force: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
         #[structopt(short = "d", long = "delta", help = "Update only changed files")]
         delta: bool,
     },
@@ -130,8 +129,6 @@ pub enum Sync {
         #[structopt(short = "d", long = "db", help = "Db to save config to")]
         #[structopt(parse(from_os_str))]
         db: Option<PathBuf>,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[structopt(name = "push", about = "Push save files to sync location")]
     Push {
@@ -139,8 +136,6 @@ pub enum Sync {
         game_dir: PathBuf,
         #[structopt(parse(from_os_str))]
         sync_to: Option<PathBuf>,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[structopt(name = "pull", about = "Pull synced save files")]
     Pull {
@@ -156,8 +151,6 @@ pub enum Sync {
             help = "Automatically refuse syncing save files that are older than the current"
         )]
         ignore_older: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[structopt(name = "db-pull", about = "Pull all save files from a database")]
     DbPull {
@@ -171,8 +164,6 @@ pub enum Sync {
             help = "Automatically refuse syncing save files that are older than the current"
         )]
         ignore_older: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[structopt(name = "db-push", about = "Push all save files in a database")]
     DbPush {
@@ -186,8 +177,6 @@ pub enum Sync {
             help = "Automatically refuse pushing save files that are older than the current"
         )]
         ignore_older: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
 }
 #[derive(StructOpt, Debug)]
@@ -202,12 +191,7 @@ pub enum Connect {
         claim: bool,
         #[structopt(short = "q", long = "quiet", help = "only print game names")]
         quiet: bool,
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
     },
     #[structopt(name = "claim", about = "Claim all available GOG Connect games")]
-    ClaimAll {
-        #[structopt(flatten)]
-        verbose: clap_verbosity_flag::Verbosity,
-    },
+    ClaimAll,
 }

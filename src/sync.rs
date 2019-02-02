@@ -1,5 +1,5 @@
+use args::Command::*;
 use args::Sync::*;
-use args::Wyvern::*;
 use config::*;
 use gog::gog::FilterParam::*;
 use gog::gog::*;
@@ -11,15 +11,8 @@ use std::io::{self, *};
 use std::path::*;
 use std::process::*;
 pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
-    match args {
-        Sync(Push {
-            game_dir,
-            sync_to,
-            verbose,
-        }) => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
+    match args.command {
+        Sync(Push { game_dir, sync_to }) => {
             if sync_saves.is_some() {
                 let mut sync_saves = sync_saves.unwrap();
                 if sync_to.is_some() {
@@ -113,11 +106,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
             sync_from,
             force,
             ignore_older,
-            verbose,
         }) => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             if sync_saves.is_some() {
                 let sync_saves = sync_saves
                     .unwrap()
@@ -172,11 +161,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
             path,
             force,
             ignore_older,
-            verbose,
         }) => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             let dbpath: PathBuf;
             if path.is_some() {
                 info!("Using db passed in arguments");
@@ -211,11 +196,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
             path,
             force,
             ignore_older,
-            verbose,
         }) => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             let dpath: PathBuf;
             if path.is_some() {
                 info!("Using db passed in arguments");
@@ -250,11 +231,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
             game_dir,
             saves,
             db,
-            verbose,
         }) => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             let dpath: PathBuf;
             if db.is_some() {
                 info!("Using db passed in arguments");

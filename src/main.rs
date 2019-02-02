@@ -23,10 +23,10 @@ extern crate zip;
 mod args;
 mod config;
 mod sync;
-use crate::args::Connect::*;
-use crate::args::Wyvern;
-use crate::args::Wyvern::Download;
-use crate::args::Wyvern::*;
+use args::Command::Download;
+use args::Command::*;
+use args::Connect::*;
+use args::Wyvern;
 use crate::config::*;
 use crc::crc32;
 use gog::extract::*;
@@ -61,7 +61,6 @@ fn main() -> Result<(), ::std::io::Error> {
         config.token = Some(token);
     }
     config.token = Some(config.token.unwrap().refresh().unwrap());
-    print!("");
     let gog = Gog::new(config.token.clone().unwrap());
     let mut sync_saves = config.sync_saves.clone();
     if sync_saves.is_some() {
@@ -71,12 +70,12 @@ fn main() -> Result<(), ::std::io::Error> {
                 .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
         );
     }
+    args.verbose
+        .setup_env_logger("wyvern")
+        .expect("Couldn't set up logger");
     confy::store("wyvern", config)?;
-    match args {
-        List { id, verbose } => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
+    match args.command {
+        List { id } => {
             if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
                 println!("Title - GameID");
@@ -96,11 +95,7 @@ fn main() -> Result<(), ::std::io::Error> {
             mut desktop,
             mut menu,
             shortcuts,
-            verbose,
         } => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             if shortcuts {
                 desktop = true;
                 menu = true;
@@ -207,11 +202,7 @@ fn main() -> Result<(), ::std::io::Error> {
             mut desktop,
             mut menu,
             shortcuts,
-            verbose,
         } => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             if shortcuts {
                 desktop = true;
                 menu = true;
@@ -229,14 +220,7 @@ fn main() -> Result<(), ::std::io::Error> {
             }
         }
         #[cfg(feature = "eidolonint")]
-        UpdateEidolon {
-            force,
-            verbose,
-            delta,
-        } => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
+        UpdateEidolon { force, delta } => {
             use libeidolon::games::*;
             let eidolon_games = get_games();
             for game in eidolon_games {
@@ -256,12 +240,9 @@ fn main() -> Result<(), ::std::io::Error> {
         Update {
             mut path,
             force,
-            verbose,
+
             delta,
         } => {
-            verbose
-                .setup_env_logger("wyvern")
-                .expect("Couldn't set up logger");
             if path.is_none() {
                 info!("Path not specified. Using current dir");
                 path = Some(PathBuf::from(".".to_string()));
@@ -282,15 +263,8 @@ fn main() -> Result<(), ::std::io::Error> {
                 info!("Scanning for Connect games");
                 gog.connect_scan(uid).unwrap();
             }
-            match args {
-                Connect(ListConnect {
-                    claim,
-                    quiet,
-                    verbose,
-                }) => {
-                    verbose
-                        .setup_env_logger("wyvern")
-                        .expect("Couldn't set up logger");
+            match args.command {
+                Connect(ListConnect { claim, quiet }) => {
                     info!("Getting GOG Connect status");
                     let status = gog.connect_status(uid);
                     if status.is_ok() {
@@ -324,10 +298,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         };
                     }
                 }
-                Connect(ClaimAll { verbose }) => {
-                    verbose
-                        .setup_env_logger("wyvern")
-                        .expect("Couldn't set up logger");
+                Connect(ClaimAll {}) => {
                     gog.connect_claim(uid).unwrap();
                     println!("Claimed all available games");
                 }
