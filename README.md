@@ -6,7 +6,7 @@ Wyvern is a command-line tool written in rust that is meant to make downloading 
 
 - Installing games without need for the graphical installers
 
-- One-command updating of games to their latest versions.
+- One-command updating of games to their latest versions, while only updating files that have changed between versions.
 
 - GOG Connect functionality so you can scan for and claim games without leaving the terminal
 
@@ -70,7 +70,5 @@ Please file isues at the [sr.ht issue tracker](https://todo.sr.ht/~nicohman/wyve
 
 
 ## Todo
-
-- Add in cloud integration with save file syncing.
 
 - Very happy to take feature requests!
