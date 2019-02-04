@@ -545,13 +545,18 @@ fn download_prep(
                 .last()
                 .unwrap()
                 .to_string();
+            let n_path = folder_name.join(&name);
+            if fs::metadata(&n_path).is_ok() {
+                warn!("This extra has already been downloaded. Skipping.");
+                continue;
+            }
             println!("Starting download of {}", name);
             let pb = ProgressBar::new(extra.content_length().unwrap());
             pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .progress_chars("#>-"));
             let mut pb_read = pb.wrap_read(real_response);
-            let mut file = File::create(folder_name.join(&name)).expect("Couldn't create file");
+            let mut file = File::create(n_path).expect("Couldn't create file");
             io::copy(&mut pb_read, &mut file).expect("Couldn't copy to target file");
             pb.finish();
         }
