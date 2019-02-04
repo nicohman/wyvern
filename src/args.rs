@@ -61,6 +61,8 @@ pub enum Command {
             help = "Add both kinds of shortcuts for the installed game"
         )]
         shortcuts: bool,
+        #[structopt(short = "l", long = "dlc", help = "Download DLCs as well")]
+        dlc: bool,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(

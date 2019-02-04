@@ -94,6 +94,7 @@ fn main() -> Result<(), ::std::io::Error> {
             mut desktop,
             mut menu,
             shortcuts,
+            dlc,
         } => {
             if shortcuts {
                 desktop = true;
@@ -122,16 +123,19 @@ fn main() -> Result<(), ::std::io::Error> {
                                     let details = gog.get_game_details(e[i].id).unwrap();
                                     let pname = details.title.clone();
                                     info!("Beginning download process");
-                                    let (name, downloaded_windows) =
-                                        download_prep(&gog, details, windows_auto, windows_force)
-                                            .unwrap();
+                                    let (name, downloaded_windows) = download_prep(
+                                        &gog,
+                                        details,
+                                        windows_auto,
+                                        windows_force,
+                                        dlc,
+                                    )
+                                    .unwrap();
                                     if install_after.is_some() && !downloaded_windows {
                                         println!("Installing game");
-                                        info!("Opening installer file");
-                                        let mut installer = fs::File::open(name).unwrap();
                                         info!("Installing game");
-                                        install(
-                                            &mut installer,
+                                        install_all(
+                                            name,
                                             install_after.unwrap(),
                                             pname,
                                             desktop,
@@ -154,13 +158,11 @@ fn main() -> Result<(), ::std::io::Error> {
                         let pname = details.title.clone();
                         info!("Beginning download process");
                         let (name, downloaded_windows) =
-                            download_prep(&gog, details, windows_auto, windows_force).unwrap();
+                            download_prep(&gog, details, windows_auto, windows_force, dlc).unwrap();
                         if install_after.is_some() && !downloaded_windows {
                             println!("Installing game");
-                            info!("Opening installer file");
-                            let mut installer = fs::File::open(name).unwrap();
                             info!("Installing game");
-                            install(&mut installer, install_after.unwrap(), pname, desktop, menu);
+                            install_all(name, install_after.unwrap(), pname, desktop, menu);
                         }
                     }
                 } else {
@@ -171,14 +173,11 @@ fn main() -> Result<(), ::std::io::Error> {
                 let pname = details.title.clone();
                 info!("Beginning download process");
                 let (name, downloaded_windows) =
-                    download_prep(&gog, details, windows_auto, windows_force).unwrap();
-
+                    download_prep(&gog, details, windows_auto, windows_force, dlc).unwrap();
                 if install_after.is_some() && !downloaded_windows {
                     println!("Installing game");
-                    info!("Opening installer file");
-                    let mut installer = fs::File::open(name).unwrap();
                     info!("Installing game");
-                    install(&mut installer, install_after.unwrap(), pname, desktop, menu);
+                    install_all(name, install_after.unwrap(), pname, desktop, menu);
                 }
             } else if all {
                 println!("Downloading all games in library");
@@ -186,7 +185,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 for game in games {
                     let details = gog.get_game_details(game).unwrap();
                     info!("Beginning download process");
-                    download_prep(&gog, details, windows_auto, windows_force).unwrap();
+                    download_prep(&gog, details, windows_auto, windows_force, dlc).unwrap();
                 }
                 if install_after.is_some() {
                     println!("--install does not work with --all");
@@ -282,101 +281,102 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                 println!("Fetched installer data. Checking files.");
                 io::stdout().flush();
 
-                let pb = ProgressBar::new(data.files.len() as u64);
-                pb.set_style(
+                let access_token = gog.token.borrow().access_token.clone();
+                data.par_iter().for_each(|data| {
+                    let pb = ProgressBar::new(data.files.len() as u64);
+                    pb.set_style(
                     ProgressStyle::default_bar()
                         .template(
                             "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}",
                         )
                         .progress_chars("#>-"),
                 );
-                let access_token = gog.token.borrow().access_token.clone();
-                data.files.par_iter().for_each(|file| {
-                    if !file.filename.contains("meta") && !file.filename.contains("scripts") {
-                        let path = game_info_path
-                            .parent()
-                            .unwrap()
-                            .join(&file.filename.replace("/noarch", "").replace("data/", ""));
-                        let is_dir = path.extension().is_none()
-                            || file.filename.clone().pop().unwrap() == '/';
-                        if path.is_file() {
-                            info!("Checking file {:?}", path);
-                            let mut buffer = vec![];
-                            info!("Opening file");
-                            let mut fd =
-                                File::open(&path).expect(&format!("Couldn't open file {:?}", path));
-                            fd.read_to_end(&mut buffer).unwrap();
-                            let checksum = crc32::checksum_ieee(buffer.as_slice());
-                            if checksum == file.crc32 {
-                                info!("File {:?} is the same", path);
+                    data.files.par_iter().for_each(|file| {
+                        if !file.filename.contains("meta") && !file.filename.contains("scripts") {
+                            let path = game_info_path
+                                .parent()
+                                .unwrap()
+                                .join(&file.filename.replace("/noarch", "").replace("data/", ""));
+                            let is_dir = path.extension().is_none()
+                                || file.filename.clone().pop().unwrap() == '/';
+                            if path.is_file() {
+                                info!("Checking file {:?}", path);
+                                let mut buffer = vec![];
+                                info!("Opening file");
+                                let mut fd = File::open(&path)
+                                    .expect(&format!("Couldn't open file {:?}", path));
+                                fd.read_to_end(&mut buffer).unwrap();
+                                let checksum = crc32::checksum_ieee(buffer.as_slice());
+                                if checksum == file.crc32 {
+                                    info!("File {:?} is the same", path);
+                                    pb.inc(1);
+                                    return;
+                                }
+                                pb.println(format!("File {:?} is different. Downloading.", path));
+                            } else if !path.exists() && is_dir {
                                 pb.inc(1);
                                 return;
+                            } else if is_dir {
+                                fs::create_dir_all(path);
+                                pb.inc(1);
+                                return;
+                            } else {
+                                pb.println(format!("File {:?} does not exist. Downloading.", path));
                             }
-                            pb.println(format!("File {:?} is different. Downloading.", path));
-                        } else if !path.exists() && is_dir {
-                            pb.inc(1);
-                            return;
-                        } else if is_dir {
-                            fs::create_dir_all(path);
-                            pb.inc(1);
-                            return;
-                        } else {
-                            pb.println(format!("File {:?} does not exist. Downloading.", path));
-                        }
-                        fs::create_dir_all(path.parent().unwrap());
-                        info!("Fetching file from installer");
-                        let easy = Gog::download_request_range_at(
-                            access_token.as_str(),
-                            data.url.as_str(),
-                            gog::Collector(Vec::new()),
-                            file.start_offset as i64,
-                            file.end_offset as i64,
-                        )
-                        .unwrap();
-                        let bytes = easy.get_ref().0.clone();
-                        drop(easy);
-                        let bytes_len = bytes.len();
-                        let mut bytes_cur = Cursor::new(bytes);
-                        let mut header_buffer = [0; 4];
-                        bytes_cur.read_exact(&mut header_buffer).unwrap();
-                        if u32::from_le_bytes(header_buffer) != 0x04034b50 {
-                            error!("Bad local file header");
-                        }
-                        bytes_cur.seek(Start(28)).unwrap();
-                        let mut buffer = [0; 2];
-                        info!("Reading length of extra field");
-                        bytes_cur.read_exact(&mut buffer).unwrap();
-                        let extra_length = u16::from_le_bytes(buffer);
-                        info!("Seeking to beginning of file");
-                        bytes_cur
-                            .seek(Current((file.filename_length + extra_length) as i64))
+                            fs::create_dir_all(path.parent().unwrap());
+                            info!("Fetching file from installer");
+                            let easy = Gog::download_request_range_at(
+                                access_token.as_str(),
+                                data.url.as_str(),
+                                gog::Collector(Vec::new()),
+                                file.start_offset as i64,
+                                file.end_offset as i64,
+                            )
                             .unwrap();
-                        let mut bytes = vec![0; bytes_len - bytes_cur.position() as usize];
-                        bytes_cur.read_exact(&mut bytes).unwrap();
-                        let mut fd = OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .open(&path)
-                            .expect(&format!("Couldn't open file {:?}", path));
-                        if file.external_file_attr != Some(0) {
-                            info!("Setting permissions");
-                            fd.set_permissions(Permissions::from_mode(
-                                file.external_file_attr.unwrap() >> 16,
-                            ))
-                            .expect("Couldn't set permissions");
+                            let bytes = easy.get_ref().0.clone();
+                            drop(easy);
+                            let bytes_len = bytes.len();
+                            let mut bytes_cur = Cursor::new(bytes);
+                            let mut header_buffer = [0; 4];
+                            bytes_cur.read_exact(&mut header_buffer).unwrap();
+                            if u32::from_le_bytes(header_buffer) != 0x04034b50 {
+                                error!("Bad local file header");
+                            }
+                            bytes_cur.seek(Start(28)).unwrap();
+                            let mut buffer = [0; 2];
+                            info!("Reading length of extra field");
+                            bytes_cur.read_exact(&mut buffer).unwrap();
+                            let extra_length = u16::from_le_bytes(buffer);
+                            info!("Seeking to beginning of file");
+                            bytes_cur
+                                .seek(Current((file.filename_length + extra_length) as i64))
+                                .unwrap();
+                            let mut bytes = vec![0; bytes_len - bytes_cur.position() as usize];
+                            bytes_cur.read_exact(&mut bytes).unwrap();
+                            let mut fd = OpenOptions::new()
+                                .write(true)
+                                .create(true)
+                                .open(&path)
+                                .expect(&format!("Couldn't open file {:?}", path));
+                            if file.external_file_attr != Some(0) {
+                                info!("Setting permissions");
+                                fd.set_permissions(Permissions::from_mode(
+                                    file.external_file_attr.unwrap() >> 16,
+                                ))
+                                .expect("Couldn't set permissions");
+                            }
+                            info!("Decompressing file");
+                            let def = inflate::inflate_bytes(bytes.as_slice()).unwrap();
+                            info!("Writing decompressed file to disk");
+                            fd.write_all(&def)
+                                .expect(&format!("Couldn't write to file {:?}", path));
+                            pb.inc(1);
                         }
-                        info!("Decompressing file");
-                        let def = inflate::inflate_bytes(bytes.as_slice()).unwrap();
-                        info!("Writing decompressed file to disk");
-                        fd.write_all(&def)
-                            .expect(&format!("Couldn't write to file {:?}", path));
-                        pb.inc(1);
-                    }
+                    });
+                    pb.finish_with_message("Updated game!");
                 });
-                pb.finish_with_message("Updated game!");
             } else {
-                info!("Using regex to fetch version string");
-
+                info!("Using regex to fetch version string. Will not work with DLCs.");
                 let current_version = regex
                     .captures(&(downloads[0].version.clone().unwrap()))
                     .unwrap()[1]
@@ -396,9 +396,9 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                     let name = download(&gog, downloads).unwrap();
                     println!("Installing.");
                     info!("Opening installer file");
-                    let mut installer = File::open(name.clone()).unwrap();
+                    let mut installer = File::open(&name[0]).unwrap();
                     info!("Starting installation");
-                    install(&mut installer, path, name, false, false);
+                    install(&mut installer, path, name[0].clone(), false, false);
                     println!("Game finished updating!");
                 }
             }
@@ -425,16 +425,79 @@ fn parse_gameinfo(ginfo: String) -> GameInfo {
         version: version,
     }
 }
-
+fn shortcuts(name: &String, path: &std::path::Path, desktop: bool, menu: bool) {
+    if menu || desktop {
+        info!("Creating shortcuts");
+        let game_path = current_dir().unwrap().join(&path);
+        info!("Creating text of shortcut");
+        let shortcut = desktop_shortcut(name.as_str(), &game_path);
+        if menu {
+            info!("Adding menu shortcut");
+            let desktop_path = dirs::home_dir().unwrap().join(format!(
+                ".local/share/applications/gog_com-{}_1.desktop",
+                name
+            ));
+            info!("Created menu file");
+            let fd = File::create(&desktop_path);
+            if fd.is_ok() {
+                info!("Writing to file");
+                fd.unwrap()
+                    .write(shortcut.as_str().as_bytes())
+                    .expect("Couldn't write to menu shortcut");
+            } else {
+                error!(
+                    "Could not create menu shortcut. Error: {}",
+                    fd.err().unwrap()
+                );
+            }
+        }
+        if desktop {
+            info!("Adding desktop shortcut");
+            let desktop_path = dirs::home_dir()
+                .unwrap()
+                .join(format!("Desktop/gog_com-{}_1.desktop", name));
+            let fd = File::create(&desktop_path);
+            if fd.is_ok() {
+                info!("Writing to file.");
+                let mut fd = fd.unwrap();
+                fd.write(shortcut.as_str().as_bytes())
+                    .expect("Couldn't write to desktop shortcut");
+                info!("Setting permissions");
+                fd.set_permissions(Permissions::from_mode(0o0774))
+                    .expect("Couldn't make desktop shortcut executable");
+            } else {
+                error!(
+                    "Could not create desktop shortcut. Error: {}",
+                    fd.err().unwrap()
+                );
+            }
+        }
+    }
+}
+fn install_all(names: Vec<String>, path: PathBuf, name: String, desktop: bool, menu: bool) {
+    for name in names {
+        info!("Installing {}", name);
+        let mut installer = File::open(&name).expect("Could not open installer file");
+        install(&mut installer, path.clone(), name.clone(), false, false);
+    }
+    shortcuts(&name, path.as_path(), desktop, menu);
+}
 fn download_prep(
     gog: &Gog,
     details: GameDetails,
     windows_auto: bool,
     windows_force: bool,
-) -> Result<(String, bool), Error> {
+    dlc: bool,
+) -> Result<(Vec<String>, bool), Error> {
     if details.downloads.linux.is_some() && !windows_force {
         info!("Downloading linux downloads");
-        let name = download(gog, details.downloads.linux.unwrap()).unwrap();
+        let name;
+        if dlc {
+            info!("Downloading DLC");
+            name = download(gog, all_downloads(details, true)).unwrap();
+        } else {
+            name = download(gog, details.downloads.linux.unwrap()).unwrap();
+        }
         return Ok((name, false));
     } else {
         if !windows_auto && !windows_force {
@@ -448,7 +511,13 @@ fn download_prep(
                     "y" => {
                         println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
                         info!("Downloading windows downloads");
-                        let name = download(&gog, details.downloads.windows.unwrap()).unwrap();
+                        let name;
+                        if dlc {
+                            info!("Downloading DLC as well");
+                            name = download(&gog, all_downloads(details, false)).unwrap();
+                        } else {
+                            name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                        }
                         return Ok((name, true));
                     }
                     "n" => {
@@ -463,7 +532,13 @@ fn download_prep(
                 println!("No linux version available. Downloading windows version.");
             }
             info!("Downloading windows downloads");
-            let name = download(&gog, details.downloads.windows.unwrap()).unwrap();
+            let name;
+            if dlc {
+                info!("Downloading DLC as well");
+                name = download(&gog, all_downloads(details, false)).unwrap();
+            } else {
+                name = download(gog, details.downloads.windows.unwrap()).unwrap();
+            }
             return Ok((name, true));
         }
     }
@@ -551,53 +626,7 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
         add_game(game);
         println!("Added game to eidolon registry!");
     }
-    if menu || desktop {
-        info!("Creating shortcuts");
-        let game_path = current_dir().unwrap().join(&path);
-        info!("Creating text of shortcut");
-        let shortcut = desktop_shortcut(name.as_str(), &game_path);
-        if menu {
-            info!("Adding menu shortcut");
-            let desktop_path = dirs::home_dir().unwrap().join(format!(
-                ".local/share/applications/gog_com-{}_1.desktop",
-                name
-            ));
-            info!("Created menu file");
-            let fd = File::create(&desktop_path);
-            if fd.is_ok() {
-                info!("Writing to file");
-                fd.unwrap()
-                    .write(shortcut.as_str().as_bytes())
-                    .expect("Couldn't write to menu shortcut");
-            } else {
-                error!(
-                    "Could not create menu shortcut. Error: {}",
-                    fd.err().unwrap()
-                );
-            }
-        }
-        if desktop {
-            info!("Adding desktop shortcut");
-            let desktop_path = dirs::home_dir()
-                .unwrap()
-                .join(format!("Desktop/gog_com-{}_1.desktop", name));
-            let fd = File::create(&desktop_path);
-            if fd.is_ok() {
-                info!("Writing to file.");
-                let mut fd = fd.unwrap();
-                fd.write(shortcut.as_str().as_bytes())
-                    .expect("Couldn't write to desktop shortcut");
-                info!("Setting permissions");
-                fd.set_permissions(Permissions::from_mode(0o0774))
-                    .expect("Couldn't make desktop shortcut executable");
-            } else {
-                error!(
-                    "Could not create desktop shortcut. Error: {}",
-                    fd.err().unwrap()
-                );
-            }
-        }
-    }
+    shortcuts(&name, path.as_path(), desktop, menu);
 }
 pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
@@ -628,16 +657,18 @@ fn list_owned(gog: Gog) -> Result<(), Error> {
     }
     Ok(())
 }
-fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Error> {
+fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<Vec<String>, Error> {
     info!("Downloading files");
     let mut names = vec![];
     for download in downloads.iter() {
         names.push(download.name.clone());
     }
     info!("Getting responses to requests");
-    let responses = gog.download_game(downloads);
+    let responses = gog.download_game(downloads.clone());
     let count = responses.len();
     for (idx, mut response) in responses.into_iter().enumerate() {
+        let mut responses = gog.download_game(vec![downloads[idx].clone()]);
+        let mut response = responses.remove(0);
         if response.is_err() {
             println!(
                 "Error downloading file. Error message:{}",
@@ -671,10 +702,44 @@ fn download(gog: &Gog, downloads: Vec<gog::gog::Download>) -> Result<String, Err
         }
     }
     println!("Done downloading!");
-    return Ok(names[0].clone());
+    return Ok(names);
 }
 fn desktop_shortcut(name: impl Into<String>, path: &std::path::Path) -> String {
     let name = name.into();
     let path = current_dir().unwrap().join(path);
     format!("[Desktop Entry]\nEncoding=UTF-8\nValue=1.0\nType=Application\nName={}\nGenericName={}\nComment={}\nIcon={}\nExec=\"{}\" \"\"\nCategories=Game;\nPath={}",name,name,name,path.join("support/icon.png").to_str().unwrap(),path.join("start.sh").to_str().unwrap(), path.to_str().unwrap())
+}
+fn all_downloads(details: GameDetails, linux: bool) -> Vec<gog::gog::Download> {
+    let downloads;
+    if linux {
+        downloads = details.downloads.linux.unwrap();
+    } else {
+        downloads = details.downloads.windows.unwrap();
+    }
+    downloads
+        .into_iter()
+        .chain(
+            details
+                .dlcs
+                .into_iter()
+                .map(|x| {
+                    let title = x.title.clone();
+                    let mut d;
+                    if linux {
+                        d = x.downloads.linux.unwrap();
+                    } else {
+                        d = x.downloads.windows.unwrap();
+                    }
+                    d = d
+                        .into_iter()
+                        .map(|mut y| {
+                            y.name = title.clone();
+                            y
+                        })
+                        .collect();
+                    d
+                })
+                .flatten(),
+        )
+        .collect()
 }
