@@ -106,7 +106,7 @@ fn main() -> Result<(), ::std::io::Error> {
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
                 if search_results.is_ok() {
                     info!("Game search results OK");
-                    let e = search_results.unwrap();
+                    let e = search_results.unwrap().products;
                     if !first {
                         for (idx, pd) in e.iter().enumerate() {
                             println!("{}. {} - {}", idx, pd.title, pd.id);
@@ -268,7 +268,9 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
         let product = gog.get_filtered_products(FilterParams::from_one(Search(name.clone())));
         if product.is_ok() {
             info!("Fetching the GameDetails for first result of search");
-            let details = gog.get_game_details(product.unwrap()[0].id).unwrap();
+            let details = gog
+                .get_game_details(product.unwrap().products[0].id)
+                .unwrap();
             info!("Getting game's linux downloads");
             let downloads = details
                 .downloads
@@ -650,7 +652,7 @@ pub fn login() -> Token {
     token
 }
 fn list_owned(gog: Gog) -> Result<(), Error> {
-    let games = gog.get_filtered_products(FilterParams::from_one(MediaType(1)))?;
+    let games = gog.get_all_filtered_products(FilterParams::from_one(MediaType(1)))?;
     println!("Title - GameID");
     for game in games {
         println!("{} - {}", game.title, game.id);
