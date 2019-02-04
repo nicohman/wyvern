@@ -63,6 +63,12 @@ pub enum Command {
         shortcuts: bool,
         #[structopt(short = "l", long = "dlc", help = "Download DLCs as well")]
         dlc: bool,
+        #[structopt(
+            short = "e",
+            long = "extras",
+            help = "Download only a game's extra goodies"
+        )]
+        extras: bool,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(

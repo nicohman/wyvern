@@ -95,6 +95,7 @@ fn main() -> Result<(), ::std::io::Error> {
             mut menu,
             shortcuts,
             dlc,
+            extras,
         } => {
             if shortcuts {
                 desktop = true;
@@ -129,6 +130,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                         windows_auto,
                                         windows_force,
                                         dlc,
+                                        extras,
                                     )
                                     .unwrap();
                                     if install_after.is_some() && !downloaded_windows {
@@ -158,7 +160,8 @@ fn main() -> Result<(), ::std::io::Error> {
                         let pname = details.title.clone();
                         info!("Beginning download process");
                         let (name, downloaded_windows) =
-                            download_prep(&gog, details, windows_auto, windows_force, dlc).unwrap();
+                            download_prep(&gog, details, windows_auto, windows_force, dlc, extras)
+                                .unwrap();
                         if install_after.is_some() && !downloaded_windows {
                             println!("Installing game");
                             info!("Installing game");
@@ -173,7 +176,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 let pname = details.title.clone();
                 info!("Beginning download process");
                 let (name, downloaded_windows) =
-                    download_prep(&gog, details, windows_auto, windows_force, dlc).unwrap();
+                    download_prep(&gog, details, windows_auto, windows_force, dlc, extras).unwrap();
                 if install_after.is_some() && !downloaded_windows {
                     println!("Installing game");
                     info!("Installing game");
@@ -185,7 +188,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 for game in games {
                     let details = gog.get_game_details(game).unwrap();
                     info!("Beginning download process");
-                    download_prep(&gog, details, windows_auto, windows_force, dlc).unwrap();
+                    download_prep(&gog, details, windows_auto, windows_force, dlc, extras).unwrap();
                 }
                 if install_after.is_some() {
                     println!("--install does not work with --all");
@@ -490,58 +493,122 @@ fn download_prep(
     windows_auto: bool,
     windows_force: bool,
     dlc: bool,
+    extras: bool,
 ) -> Result<(Vec<String>, bool), Error> {
-    if details.downloads.linux.is_some() && !windows_force {
-        info!("Downloading linux downloads");
-        let name;
-        if dlc {
-            info!("Downloading DLC");
-            name = download(gog, all_downloads(details, true)).unwrap();
-        } else {
-            name = download(gog, details.downloads.linux.unwrap()).unwrap();
+    if extras {
+        println!("Downloading extras for game {}", details.title);
+        let folder_name = PathBuf::from(format!("{} Extras", details.title));
+        if fs::metadata(&folder_name).is_err() {
+            fs::create_dir(&folder_name).expect("Couldn't create extras folder");
         }
-        return Ok((name, false));
-    } else {
-        if !windows_auto && !windows_force {
-            info!("Asking user about downloading windows version");
-            let mut choice = String::new();
-            loop {
-                print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
-                io::stdout().flush().unwrap();
-                io::stdin().read_line(&mut choice).unwrap();
-                match choice.to_lowercase().trim() {
-                    "y" => {
-                        println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
-                        info!("Downloading windows downloads");
-                        let name;
-                        if dlc {
-                            info!("Downloading DLC as well");
-                            name = download(&gog, all_downloads(details, false)).unwrap();
+        let extra_responses: Vec<Result<reqwest::Response, Error>> = details
+            .extras
+            .iter()
+            .map(|x| {
+                let mut url = "https://gog.com".to_string() + &x.manual_url;
+                let mut response;
+                loop {
+                    let temp_response = gog.client_noredirect.borrow().get(&url).send();
+                    if temp_response.is_ok() {
+                        response = temp_response.unwrap();
+                        let headers = response.headers();
+                        // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
+                        if headers.contains_key("location") {
+                            url = headers
+                                .get("location")
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_string();
                         } else {
-                            name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                            break;
                         }
-                        return Ok((name, true));
+                    } else {
+                        return Err(temp_response.err().unwrap().into());
                     }
-                    "n" => {
-                        println!("No suitable downloads found. Exiting");
-                        std::process::exit(0);
-                    }
-                    _ => println!("Please enter y or n to proceed."),
                 }
-            }
-        } else {
-            if !windows_force {
-                println!("No linux version available. Downloading windows version.");
-            }
-            info!("Downloading windows downloads");
+                Ok(response)
+            })
+            .collect();
+        for (i, extra) in extra_responses.into_iter().enumerate() {
+            let mut extra = extra.expect("Couldn't fetch extra");
+            let mut real_response = gog
+                .client_noredirect
+                .borrow()
+                .get(extra.url().clone())
+                .send()
+                .expect("Couldn't fetch extra data");
+            let name = extra
+                .url()
+                .path_segments()
+                .unwrap()
+                .last()
+                .unwrap()
+                .to_string();
+            println!("Starting download of {}", name);
+            let pb = ProgressBar::new(extra.content_length().unwrap());
+            pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .progress_chars("#>-"));
+            let mut pb_read = pb.wrap_read(real_response);
+            let mut file = File::create(folder_name.join(&name)).expect("Couldn't create file");
+            io::copy(&mut pb_read, &mut file).expect("Couldn't copy to target file");
+            pb.finish();
+        }
+        std::process::exit(0);
+    } else {
+        if details.downloads.linux.is_some() && !windows_force {
+            info!("Downloading linux downloads");
             let name;
             if dlc {
-                info!("Downloading DLC as well");
-                name = download(&gog, all_downloads(details, false)).unwrap();
+                info!("Downloading DLC");
+                name = download(gog, all_downloads(details, true)).unwrap();
             } else {
-                name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                name = download(gog, details.downloads.linux.unwrap()).unwrap();
             }
-            return Ok((name, true));
+            return Ok((name, false));
+        } else {
+            if !windows_auto && !windows_force {
+                info!("Asking user about downloading windows version");
+                let mut choice = String::new();
+                loop {
+                    print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
+                    io::stdout().flush().unwrap();
+                    io::stdin().read_line(&mut choice).unwrap();
+                    match choice.to_lowercase().trim() {
+                        "y" => {
+                            println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
+                            info!("Downloading windows downloads");
+                            let name;
+                            if dlc {
+                                info!("Downloading DLC as well");
+                                name = download(&gog, all_downloads(details, false)).unwrap();
+                            } else {
+                                name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                            }
+                            return Ok((name, true));
+                        }
+                        "n" => {
+                            println!("No suitable downloads found. Exiting");
+                            std::process::exit(0);
+                        }
+                        _ => println!("Please enter y or n to proceed."),
+                    }
+                }
+            } else {
+                if !windows_force {
+                    println!("No linux version available. Downloading windows version.");
+                }
+                info!("Downloading windows downloads");
+                let name;
+                if dlc {
+                    info!("Downloading DLC as well");
+                    name = download(&gog, all_downloads(details, false)).unwrap();
+                } else {
+                    name = download(gog, details.downloads.windows.unwrap()).unwrap();
+                }
+                return Ok((name, true));
+            }
         }
     }
 }
