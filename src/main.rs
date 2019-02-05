@@ -100,6 +100,7 @@ fn main() -> Result<(), ::std::io::Error> {
             dlc,
             extras,
             resume,
+            original,
         } => {
             if shortcuts {
                 desktop = true;
@@ -136,6 +137,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                         dlc,
                                         extras,
                                         resume,
+                                        original,
                                     )
                                     .unwrap();
                                     if install_after.is_some() && !downloaded_windows {
@@ -172,6 +174,7 @@ fn main() -> Result<(), ::std::io::Error> {
                             dlc,
                             extras,
                             resume,
+                            original,
                         )
                         .unwrap();
                         if install_after.is_some() && !downloaded_windows {
@@ -195,6 +198,7 @@ fn main() -> Result<(), ::std::io::Error> {
                     dlc,
                     extras,
                     resume,
+                    original,
                 )
                 .unwrap();
                 if install_after.is_some() && !downloaded_windows {
@@ -216,6 +220,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         dlc,
                         extras,
                         resume,
+                        original,
                     )
                     .unwrap();
                 }
@@ -427,7 +432,7 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                         println!("Forcing reinstall due to --force option.");
                     }
                     println!("Updating {} to version {}", name, current_version);
-                    let name = download(&gog, downloads, false).unwrap();
+                    let name = download(&gog, downloads, false, false).unwrap();
                     println!("Installing.");
                     info!("Opening installer file");
                     let mut installer = File::open(&name[0]).unwrap();
@@ -524,6 +529,7 @@ fn download_prep(
     dlc: bool,
     extras: bool,
     resume: bool,
+    original: bool,
 ) -> Result<(Vec<String>, bool), Error> {
     if extras {
         println!("Downloading extras for game {}", details.title);
@@ -597,9 +603,9 @@ fn download_prep(
             let name;
             if dlc {
                 info!("Downloading DLC");
-                name = download(gog, all_downloads(details, true), resume).unwrap();
+                name = download(gog, all_downloads(details, true), resume, original).unwrap();
             } else {
-                name = download(gog, details.downloads.linux.unwrap(), resume).unwrap();
+                name = download(gog, details.downloads.linux.unwrap(), resume, original).unwrap();
             }
             return Ok((name, false));
         } else {
@@ -618,10 +624,16 @@ fn download_prep(
                             if dlc {
                                 info!("Downloading DLC as well");
                                 name =
-                                    download(&gog, all_downloads(details, false), resume).unwrap();
+                                    download(&gog, all_downloads(details, false), resume, original)
+                                        .unwrap();
                             } else {
-                                name = download(gog, details.downloads.windows.unwrap(), resume)
-                                    .unwrap();
+                                name = download(
+                                    gog,
+                                    details.downloads.windows.unwrap(),
+                                    resume,
+                                    original,
+                                )
+                                .unwrap();
                             }
                             return Ok((name, true));
                         }
@@ -640,9 +652,10 @@ fn download_prep(
                 let name;
                 if dlc {
                     info!("Downloading DLC as well");
-                    name = download(&gog, all_downloads(details, false), resume).unwrap();
+                    name = download(&gog, all_downloads(details, false), resume, original).unwrap();
                 } else {
-                    name = download(gog, details.downloads.windows.unwrap(), resume).unwrap();
+                    name = download(gog, details.downloads.windows.unwrap(), resume, original)
+                        .unwrap();
                 }
                 return Ok((name, true));
             }
@@ -767,6 +780,7 @@ fn download(
     gog: &Gog,
     downloads: Vec<gog::gog::Download>,
     resume: bool,
+    original: bool,
 ) -> Result<Vec<String>, Error> {
     info!("Downloading files");
     let mut names = vec![];
@@ -798,28 +812,37 @@ fn download(
             pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .progress_chars("#>-"));
-            let name = names[idx].clone();
+            let mut name = names[idx].clone();
             let url = response.url().clone();
-            let final_name = url.path_segments().unwrap().last().unwrap();
+            let final_name = url.path_segments().unwrap().last().unwrap().to_string();
+            if original {
+                name = final_name;
+                names[idx] = name.clone();
+            }
             if resume {
                 if let Ok(mut meta) = fs::metadata(&name) {
-                    println!("Resuming {}, {} of {}", name, idx + 1, count);
-                    pb.set_position(meta.len());
-                    let mut fd = OpenOptions::new().append(true).open(&name)?;
-                    let handler = WriteHandler {
-                        writer: fd,
-                        pb: Some(pb),
-                    };
-                    let mut result = Gog::download_request_range_at(
-                        gog.token.borrow().access_token.as_str(),
-                        url.as_str(),
-                        handler,
-                        meta.len() as i64,
-                        total_size as i64,
-                    )?;
-                    let fd_ref = result.get_mut();
-                    fd_ref.pb.take().unwrap().finish();
-                    continue;
+                    if meta.len() >= total_size {
+                        println!("Resuming {}, {} of {}", name, idx + 1, count);
+                        pb.set_position(meta.len());
+                        let mut fd = OpenOptions::new().append(true).open(&name)?;
+                        let handler = WriteHandler {
+                            writer: fd,
+                            pb: Some(pb),
+                        };
+                        let mut result = Gog::download_request_range_at(
+                            gog.token.borrow().access_token.as_str(),
+                            url.as_str(),
+                            handler,
+                            meta.len() as i64,
+                            total_size as i64,
+                        )?;
+                        let fd_ref = result.get_mut();
+                        fd_ref.pb.take().unwrap().finish();
+                        continue;
+                    } else {
+                        error!("This file is larger than or equal to the total size of the file. Not downloading anything.");
+                        continue;
+                    }
                 } else {
                     info!("No file to resume from. Continuing as normal.");
                 }

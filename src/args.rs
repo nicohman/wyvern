@@ -71,6 +71,12 @@ pub enum Command {
         extras: bool,
         #[structopt(short = "r", long = "resume", help = "Resume downloading games")]
         resume: bool,
+        #[structopt(
+            short = "O",
+            long = "original-name",
+            help = "Preserve the file's original name"
+        )]
+        original: bool,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(
