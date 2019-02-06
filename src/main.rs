@@ -250,12 +250,15 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
         let name = ginfo.name.clone();
         let version = ginfo.version.clone();
         info!("Searching GOG products for {}", name);
-        let product = gog.get_filtered_products(FilterParams::from_one(Search(name.clone())));
-        if product.is_ok() {
+        if let Ok(product) = gog.get_filtered_products(FilterParams::from_one(Search(name.clone())))
+        {
+            println!("{:?}", product);
             info!("Fetching the GameDetails for first result of search");
-            let details = gog
-                .get_game_details(product.unwrap().products[0].id)
-                .unwrap();
+            if product.products.len() < 1 {
+                error!("Could not find a game named {} in your library.", name);
+                std::process::exit(64);
+            }
+            let details = gog.get_game_details(product.products[0].id).unwrap();
             info!("Getting game's linux downloads");
             let downloads = details
                 .downloads
