@@ -846,6 +846,11 @@ fn download(
                 } else {
                     info!("No file to resume from. Continuing as normal.");
                 }
+            } else {
+                if PathBuf::from(name.as_str()).exists() {
+                    error!("The file {} already exists.", name);
+                    std::process::exit(64);
+                }
             }
             println!("Downloading {}, {} of {}", name, idx + 1, count);
             info!("Creating file");
