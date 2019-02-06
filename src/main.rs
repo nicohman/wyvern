@@ -154,7 +154,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         }
                     }
                 } else {
-                    println!("Could not find any games.");
+                    error!("Could not find any games.");
                 }
             } else if let Some(id) = options.id {
                 let details = gog.get_game_details(id).unwrap();
@@ -178,7 +178,172 @@ fn main() -> Result<(), ::std::io::Error> {
                     println!("--install does not work with --all");
                 }
             } else {
-                println!("Did not specify a game to download. Exiting.");
+                error!("Did not specify a game to download. Exiting.");
+            }
+        }
+        Extras { game, all } => {
+            if let Some(search) = game {
+                if let Ok(results) =
+                    gog.get_filtered_products(FilterParams::from_one(Search(search.clone())))
+                {
+                    let e = results.products;
+                    if e.len() < 1 {
+                        error!("Found no games named {} in your library.", search)
+                    }
+                    for (idx, pd) in e.iter().enumerate() {
+                        println!("{}. {} - {}", idx, pd.title, pd.id);
+                    }
+                    let mut choice = String::new();
+                    loop {
+                        print!("Select a game to download extras from:");
+                        io::stdout().flush().unwrap();
+                        io::stdin().read_line(&mut choice).unwrap();
+                        let parsed = choice.trim().parse::<usize>();
+                        if let Ok(i) = parsed {
+                            if e.len() > i {
+                                info!("Fetching game details");
+                                let details = gog.get_game_details(e[i].id).unwrap();
+                                println!("Downloading extras for game {}", details.title);
+                                let folder_name =
+                                    PathBuf::from(format!("{} Extras", details.title));
+                                if fs::metadata(&folder_name).is_err() {
+                                    fs::create_dir(&folder_name)
+                                        .expect("Couldn't create extras folder");
+                                }
+                                let mut to_down: Vec<usize> = vec![];
+                                if !all {
+                                    for (i, ex) in details.extras.iter().enumerate() {
+                                        println!("{}. {}", i, ex.name);
+                                    }
+                                    let mut choices = String::new();
+                                    loop {
+                                        print!("Type a list of extras you want to download as numbers seperated by commas:");
+                                        io::stdout().flush().unwrap();
+                                        io::stdin().read_line(&mut choices).unwrap();
+                                        choices = choices.trim().to_string();
+                                        if choices.len() < 1 {
+                                            error!("Please enter a valid sequence of numbers");
+                                        } else {
+                                            let split = choices.split(",");
+                                            split
+                                                .filter_map(|x| {
+                                                    if x.len() < 1 {
+                                                        return None;
+                                                    } else {
+                                                        if let Ok(parsed) = x.parse::<usize>() {
+                                                            if parsed < details.extras.len() {
+                                                                return Some(parsed);
+                                                            } else {
+                                                                error!(
+                                                                "{} is not a valid extra number",
+                                                                x
+                                                            );
+                                                                return None;
+                                                            }
+                                                        } else {
+                                                            error!("{} is not a valid number", x);
+                                                            return None;
+                                                        }
+                                                    }
+                                                })
+                                                .for_each(|x| {
+                                                    to_down.push(x);
+                                                });
+                                        }
+                                        if to_down.len() > 0 {
+                                            println!("Downloading {:?}", to_down);
+                                            break;
+                                        }
+                                    }
+                                }
+                                let extra_responses: Vec<
+                                    Result<reqwest::Response, Error>,
+                                > = details
+                                    .extras
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(i, x)| {
+                                        if !all {
+                                            return to_down.contains(i);
+                                        } else {
+                                            return true;
+                                        }
+                                    })
+                                    .map(|(i, x)| {
+                                        info!("Finding URL");
+                                        let mut url = "https://gog.com".to_string() + &x.manual_url;
+                                        let mut response;
+                                        loop {
+                                            let temp_response =
+                                                gog.client_noredirect.borrow().get(&url).send();
+                                            if temp_response.is_ok() {
+                                                response = temp_response.unwrap();
+                                                let headers = response.headers();
+                                                // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
+                                                if headers.contains_key("location") {
+                                                    url = headers
+                                                        .get("location")
+                                                        .unwrap()
+                                                        .to_str()
+                                                        .unwrap()
+                                                        .to_string();
+                                                } else {
+                                                    break;
+                                                }
+                                            } else {
+                                                return Err(temp_response.err().unwrap().into());
+                                            }
+                                        }
+                                        Ok(response)
+                                    })
+                                    .collect();
+                                for (i, extra) in extra_responses.into_iter().enumerate() {
+                                    let mut extra = extra.expect("Couldn't fetch extra");
+                                    let mut real_response = gog
+                                        .client_noredirect
+                                        .borrow()
+                                        .get(extra.url().clone())
+                                        .send()
+                                        .expect("Couldn't fetch extra data");
+                                    let name = extra
+                                        .url()
+                                        .path_segments()
+                                        .unwrap()
+                                        .last()
+                                        .unwrap()
+                                        .to_string();
+                                    let n_path = folder_name.join(&name);
+                                    if fs::metadata(&n_path).is_ok() {
+                                        warn!("This extra has already been downloaded. Skipping.");
+                                        continue;
+                                    }
+                                    println!("Starting download of {}", name);
+                                    let pb = ProgressBar::new(extra.content_length().unwrap());
+                                    pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .progress_chars("#>-"));
+                                    let mut pb_read = pb.wrap_read(real_response);
+                                    let mut file =
+                                        File::create(n_path).expect("Couldn't create file");
+                                    io::copy(&mut pb_read, &mut file)
+                                        .expect("Couldn't copy to target file");
+                                    pb.finish();
+                                }
+                                std::process::exit(0);
+                            } else {
+                                println!("Please enter a valid number corresponding to an available download");
+                            }
+                        } else {
+                            println!(
+                                "Please enter a number corresponding to an available download"
+                            );
+                        }
+                    }
+                } else {
+                    error!("Could not search for games.")
+                }
+            } else {
+                error!("Did not specify a game.");
             }
         }
         Install {
@@ -498,127 +663,58 @@ fn download_prep(
     details: GameDetails,
     options: &DownloadOptions,
 ) -> Result<(Vec<String>, bool), Error> {
-    if options.extras {
-        println!("Downloading extras for game {}", details.title);
-        let folder_name = PathBuf::from(format!("{} Extras", details.title));
-        if fs::metadata(&folder_name).is_err() {
-            fs::create_dir(&folder_name).expect("Couldn't create extras folder");
+    if details.downloads.linux.is_some() && !options.windows_force {
+        info!("Downloading linux downloads");
+        let name;
+        if options.dlc {
+            info!("Downloading DLC");
+            name = download(gog, all_downloads(details, true), options).unwrap();
+        } else {
+            name = download(gog, details.downloads.linux.unwrap(), options).unwrap();
         }
-        let extra_responses: Vec<Result<reqwest::Response, Error>> = details
-            .extras
-            .iter()
-            .map(|x| {
-                let mut url = "https://gog.com".to_string() + &x.manual_url;
-                let mut response;
-                loop {
-                    let temp_response = gog.client_noredirect.borrow().get(&url).send();
-                    if temp_response.is_ok() {
-                        response = temp_response.unwrap();
-                        let headers = response.headers();
-                        // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
-                        if headers.contains_key("location") {
-                            url = headers
-                                .get("location")
-                                .unwrap()
-                                .to_str()
-                                .unwrap()
-                                .to_string();
-                        } else {
-                            break;
-                        }
-                    } else {
-                        return Err(temp_response.err().unwrap().into());
-                    }
-                }
-                Ok(response)
-            })
-            .collect();
-        for (i, extra) in extra_responses.into_iter().enumerate() {
-            let mut extra = extra.expect("Couldn't fetch extra");
-            let mut real_response = gog
-                .client_noredirect
-                .borrow()
-                .get(extra.url().clone())
-                .send()
-                .expect("Couldn't fetch extra data");
-            let name = extra
-                .url()
-                .path_segments()
-                .unwrap()
-                .last()
-                .unwrap()
-                .to_string();
-            let n_path = folder_name.join(&name);
-            if fs::metadata(&n_path).is_ok() {
-                warn!("This extra has already been downloaded. Skipping.");
-                continue;
-            }
-            println!("Starting download of {}", name);
-            let pb = ProgressBar::new(extra.content_length().unwrap());
-            pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .progress_chars("#>-"));
-            let mut pb_read = pb.wrap_read(real_response);
-            let mut file = File::create(n_path).expect("Couldn't create file");
-            io::copy(&mut pb_read, &mut file).expect("Couldn't copy to target file");
-            pb.finish();
-        }
-        std::process::exit(0);
+        return Ok((name, false));
     } else {
-        if details.downloads.linux.is_some() && !options.windows_force {
-            info!("Downloading linux downloads");
+        if !options.windows_auto && !options.windows_force {
+            info!("Asking user about downloading windows version");
+            let mut choice = String::new();
+            loop {
+                print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
+                io::stdout().flush().unwrap();
+                io::stdin().read_line(&mut choice).unwrap();
+                match choice.to_lowercase().trim() {
+                    "y" => {
+                        println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
+                        info!("Downloading windows downloads");
+                        let name;
+                        if options.dlc {
+                            info!("Downloading DLC as well");
+                            name = download(&gog, all_downloads(details, false), options).unwrap();
+                        } else {
+                            name =
+                                download(gog, details.downloads.windows.unwrap(), options).unwrap();
+                        }
+                        return Ok((name, true));
+                    }
+                    "n" => {
+                        println!("No suitable downloads found. Exiting");
+                        std::process::exit(0);
+                    }
+                    _ => println!("Please enter y or n to proceed."),
+                }
+            }
+        } else {
+            if !options.windows_force {
+                println!("No linux version available. Downloading windows version.");
+            }
+            info!("Downloading windows downloads");
             let name;
             if options.dlc {
-                info!("Downloading DLC");
-                name = download(gog, all_downloads(details, true), options).unwrap();
+                info!("Downloading DLC as well");
+                name = download(&gog, all_downloads(details, false), options).unwrap();
             } else {
-                name = download(gog, details.downloads.linux.unwrap(), options).unwrap();
+                name = download(gog, details.downloads.windows.unwrap(), options).unwrap();
             }
-            return Ok((name, false));
-        } else {
-            if !options.windows_auto && !options.windows_force {
-                info!("Asking user about downloading windows version");
-                let mut choice = String::new();
-                loop {
-                    print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
-                    io::stdout().flush().unwrap();
-                    io::stdin().read_line(&mut choice).unwrap();
-                    match choice.to_lowercase().trim() {
-                        "y" => {
-                            println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
-                            info!("Downloading windows downloads");
-                            let name;
-                            if options.dlc {
-                                info!("Downloading DLC as well");
-                                name =
-                                    download(&gog, all_downloads(details, false), options).unwrap();
-                            } else {
-                                name = download(gog, details.downloads.windows.unwrap(), options)
-                                    .unwrap();
-                            }
-                            return Ok((name, true));
-                        }
-                        "n" => {
-                            println!("No suitable downloads found. Exiting");
-                            std::process::exit(0);
-                        }
-                        _ => println!("Please enter y or n to proceed."),
-                    }
-                }
-            } else {
-                if !options.windows_force {
-                    println!("No linux version available. Downloading windows version.");
-                }
-                info!("Downloading windows downloads");
-                let name;
-                if options.dlc {
-                    info!("Downloading DLC as well");
-                    name = download(&gog, all_downloads(details, false), options).unwrap();
-                } else {
-                    name = download(gog, details.downloads.windows.unwrap(), options).unwrap();
-                }
-                return Ok((name, true));
-            }
+            return Ok((name, true));
         }
     }
 }

@@ -21,6 +21,12 @@ pub enum Command {
         #[structopt(flatten)]
         shortcuts: ShortcutOptions,
     },
+    #[structopt(name = "extras", about = "Download a game's extras")]
+    Extras {
+        #[structopt(short = "a", long = "all", help = "Download all available extras")]
+        all: bool,
+        game: Option<String>,
+    },
     #[cfg(feature = "eidolonint")]
     #[structopt(
         name = "update-eidolon",
@@ -190,12 +196,6 @@ pub struct DownloadOptions {
     pub all: bool,
     #[structopt(short = "D", long = "dlc", help = "Download DLCs as well")]
     pub dlc: bool,
-    #[structopt(
-        short = "e",
-        long = "extras",
-        help = "Download only a game's extra goodies"
-    )]
-    pub extras: bool,
     #[structopt(short = "r", long = "resume", help = "Resume downloading games")]
     pub resume: bool,
     #[structopt(
