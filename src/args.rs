@@ -56,10 +56,8 @@ pub enum Command {
     Update {
         #[structopt(parse(from_os_str))]
         path: Option<PathBuf>,
-        #[structopt(short = "f", long = "force", help = "Force updating even if unneeded")]
-        force: bool,
-        #[structopt(short = "d", long = "delta", help = "Update only changed files")]
-        delta: bool,
+        #[structopt(short = "d", long = "dlc", help = "Update with all DLCs")]
+        dlc: bool,
     },
     #[structopt(
         name = "sync",

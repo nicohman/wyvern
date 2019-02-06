@@ -23,7 +23,6 @@ confy = "0.3.1"
 gog = { git = "https://git.sr.ht/~nicohman/gogapi-rs", rev = "5c1f29b"}
 indicatif = "0.10.3"
 zip = "0.5"
-regex = "1"
 eidolon = { version = "1.4.6", optional = true }
 toml = "0.4.10"
 dirs = "1.0.4"

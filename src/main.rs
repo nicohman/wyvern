@@ -17,7 +17,6 @@ extern crate gog;
 extern crate indicatif;
 extern crate inflate;
 extern crate rayon;
-extern crate regex;
 extern crate serde;
 extern crate serde_json;
 extern crate zip;
@@ -31,8 +30,7 @@ use args::Wyvern;
 use args::{DownloadOptions, ShortcutOptions};
 use config::*;
 use crc::crc32;
-use curl::easy::Easy;
-use curl::easy::{Easy2, Handler, WriteError};
+use curl::easy::{Handler, WriteError};
 use gog::extract::*;
 use gog::gog::{FilterParam::*, *};
 use gog::token::Token;
@@ -40,7 +38,6 @@ use gog::Error;
 use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
-use regex::Regex;
 use std::env::current_dir;
 use std::fs;
 use std::fs::*;
@@ -386,38 +383,30 @@ fn main() -> Result<(), ::std::io::Error> {
         }
         Sync(..) => sync::parse_args(gog, sync_saves, args),
         Connect { .. } => connect::parse_args(gog, args),
-        Update {
-            mut path,
-            force,
-
-            delta,
-        } => {
+        Update { mut path, dlc } => {
             if path.is_none() {
                 info!("Path not specified. Using current dir");
                 path = Some(PathBuf::from(".".to_string()));
             }
             let path = path.unwrap();
-            let game_info_path = path.clone().join("gameinfo");
+            let game_info_path = PathBuf::from(path.join("gameinfo"));
             info!("Updating game");
-            update(&gog, path, game_info_path, force, delta);
+            update(&gog, path, game_info_path, dlc);
         }
     };
     Ok(())
 }
-fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta: bool) {
+fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, dlc: bool) {
     if let Ok(mut gameinfo) = File::open(&game_info_path) {
-        let regex = Regex::new(r"(.*) \(gog").unwrap();
         let mut ginfo_string = String::new();
         info!("Reading in gameinfo file");
         gameinfo.read_to_string(&mut ginfo_string).unwrap();
         info!("Parsing gameinfo");
         let ginfo = parse_gameinfo(ginfo_string);
         let name = ginfo.name.clone();
-        let version = ginfo.version.clone();
         info!("Searching GOG products for {}", name);
         if let Ok(product) = gog.get_filtered_products(FilterParams::from_one(Search(name.clone())))
         {
-            println!("{:?}", product);
             info!("Fetching the GameDetails for first result of search");
             if product.products.len() < 1 {
                 error!("Could not find a game named {} in your library.", name);
@@ -425,150 +414,122 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
             }
             let details = gog.get_game_details(product.products[0].id).unwrap();
             info!("Getting game's linux downloads");
-            let downloads = details
-                .downloads
-                .linux
-                .expect("Game has no linux downloads");
-            if delta {
-                info!("Using delta-based updating");
-                println!("Fetching installer data.");
-                let data = gog.extract_data(downloads).unwrap();
-                println!("Fetched installer data. Checking files.");
-                io::stdout().flush();
-
-                let access_token = gog.token.borrow().access_token.clone();
-                data.par_iter().for_each(|data| {
-                    let pb = ProgressBar::new(data.files.len() as u64);
-                    pb.set_style(
+            let mut downloads;
+            if dlc {
+                info!("Using DLC to update");
+                downloads = all_downloads(details, true);
+            } else {
+                downloads = details
+                    .downloads
+                    .linux
+                    .expect("Game has no linux downloads");
+            }
+            info!("Fetching installer data.");
+            let data = gog.extract_data(downloads).unwrap();
+            println!("Fetched installer data. Checking files.");
+            io::stdout().flush();
+            let access_token = gog.token.borrow().access_token.clone();
+            data.par_iter().for_each(|data| {
+                let pb = ProgressBar::new(data.files.len() as u64);
+                pb.set_style(
                     ProgressStyle::default_bar()
                         .template(
                             "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}",
                         )
                         .progress_chars("#>-"),
                 );
-                    data.files.par_iter().for_each(|file| {
-                        if !file.filename.contains("meta") && !file.filename.contains("scripts") {
-                            let path = game_info_path
-                                .parent()
-                                .unwrap()
-                                .join(&file.filename.replace("/noarch", "").replace("data/", ""));
-                            let is_dir = path.extension().is_none()
-                                || file.filename.clone().pop().unwrap() == '/';
-                            if path.is_file() {
-                                info!("Checking file {:?}", path);
-                                let mut buffer = vec![];
-                                info!("Opening file");
-                                let mut fd = File::open(&path)
-                                    .expect(&format!("Couldn't open file {:?}", path));
-                                fd.read_to_end(&mut buffer).unwrap();
-                                let checksum = crc32::checksum_ieee(buffer.as_slice());
-                                if checksum == file.crc32 {
-                                    info!("File {:?} is the same", path);
-                                    pb.inc(1);
-                                    return;
-                                }
-                                pb.println(format!("File {:?} is different. Downloading.", path));
-                            } else if !path.exists() && is_dir {
+                data.files.par_iter().for_each(|file| {
+                    if !file.filename.contains("meta") && !file.filename.contains("scripts") {
+                        let path = game_info_path
+                            .parent()
+                            .unwrap()
+                            .join(&file.filename.replace("/noarch", "").replace("data/", ""));
+                        let is_dir = path.extension().is_none()
+                            || file.filename.clone().pop().unwrap() == '/';
+                        if path.is_file() {
+                            info!("Checking file {:?}", path);
+                            let mut buffer = vec![];
+                            info!("Opening file");
+                            let mut fd =
+                                File::open(&path).expect(&format!("Couldn't open file {:?}", path));
+                            fd.read_to_end(&mut buffer).unwrap();
+                            let checksum = crc32::checksum_ieee(buffer.as_slice());
+                            if checksum == file.crc32 {
+                                info!("File {:?} is the same", path);
                                 pb.inc(1);
                                 return;
-                            } else if is_dir {
-                                fs::create_dir_all(path);
-                                pb.inc(1);
-                                return;
-                            } else {
-                                pb.println(format!("File {:?} does not exist. Downloading.", path));
                             }
-                            fs::create_dir_all(path.parent().unwrap());
-                            info!("Fetching file from installer");
-                            let easy = Gog::download_request_range_at(
-                                access_token.as_str(),
-                                data.url.as_str(),
-                                gog::Collector(Vec::new()),
-                                file.start_offset as i64,
-                                file.end_offset as i64,
-                            )
+                            pb.println(format!("File {:?} is different. Downloading.", path));
+                        } else if !path.exists() && is_dir {
+                            pb.inc(1);
+                            return;
+                        } else if is_dir {
+                            fs::create_dir_all(path);
+                            pb.inc(1);
+                            return;
+                        } else {
+                            pb.println(format!("File {:?} does not exist. Downloading.", path));
+                        }
+                        fs::create_dir_all(path.parent().unwrap());
+                        info!("Fetching file from installer");
+                        let easy = Gog::download_request_range_at(
+                            access_token.as_str(),
+                            data.url.as_str(),
+                            gog::Collector(Vec::new()),
+                            file.start_offset as i64,
+                            file.end_offset as i64,
+                        )
+                        .unwrap();
+                        let bytes = easy.get_ref().0.clone();
+                        drop(easy);
+                        let bytes_len = bytes.len();
+                        let mut bytes_cur = Cursor::new(bytes);
+                        let mut header_buffer = [0; 4];
+                        bytes_cur.read_exact(&mut header_buffer).unwrap();
+                        if u32::from_le_bytes(header_buffer) != 0x04034b50 {
+                            error!("Bad local file header");
+                        }
+                        bytes_cur.seek(Start(28)).unwrap();
+                        let mut buffer = [0; 2];
+                        info!("Reading length of extra field");
+                        bytes_cur.read_exact(&mut buffer).unwrap();
+                        let extra_length = u16::from_le_bytes(buffer);
+                        info!("Seeking to beginning of file");
+                        bytes_cur
+                            .seek(Current((file.filename_length + extra_length) as i64))
                             .unwrap();
-                            let bytes = easy.get_ref().0.clone();
-                            drop(easy);
-                            let bytes_len = bytes.len();
-                            let mut bytes_cur = Cursor::new(bytes);
-                            let mut header_buffer = [0; 4];
-                            bytes_cur.read_exact(&mut header_buffer).unwrap();
-                            if u32::from_le_bytes(header_buffer) != 0x04034b50 {
-                                error!("Bad local file header");
-                            }
-                            bytes_cur.seek(Start(28)).unwrap();
-                            let mut buffer = [0; 2];
-                            info!("Reading length of extra field");
-                            bytes_cur.read_exact(&mut buffer).unwrap();
-                            let extra_length = u16::from_le_bytes(buffer);
-                            info!("Seeking to beginning of file");
-                            bytes_cur
-                                .seek(Current((file.filename_length + extra_length) as i64))
-                                .unwrap();
-                            let mut bytes = vec![0; bytes_len - bytes_cur.position() as usize];
-                            bytes_cur.read_exact(&mut bytes).unwrap();
-                            let mut fd = OpenOptions::new()
-                                .write(true)
-                                .create(true)
-                                .open(&path)
-                                .expect(&format!("Couldn't open file {:?}", path));
-                            if file.external_file_attr != Some(0) {
-                                info!("Setting permissions");
-                                fd.set_permissions(Permissions::from_mode(
-                                    file.external_file_attr.unwrap() >> 16,
-                                ))
-                                .expect("Couldn't set permissions");
-                            }
+                        let mut bytes = vec![0; bytes_len - bytes_cur.position() as usize];
+                        bytes_cur.read_exact(&mut bytes).unwrap();
+                        let mut fd = OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .open(&path)
+                            .expect(&format!("Couldn't open file {:?}", path));
+                        if file.external_file_attr != Some(0) {
+                            info!("Setting permissions");
+                            fd.set_permissions(Permissions::from_mode(
+                                file.external_file_attr.unwrap() >> 16,
+                            ))
+                            .expect("Couldn't set permissions");
+                        }
+                        if file.compression_method == 8 {
                             info!("Decompressing file");
+
                             let def = inflate::inflate_bytes(bytes.as_slice()).unwrap();
                             info!("Writing decompressed file to disk");
                             fd.write_all(&def)
                                 .expect(&format!("Couldn't write to file {:?}", path));
-                            pb.inc(1);
+                        } else {
+                            println!("Writing file to disk normally");
+                            fd.write_all(&bytes)
+                                .expect(&format!("Couldn't write to file {:?}", path));
                         }
-                    });
-                    pb.finish_with_message("Updated game!");
-                });
-            } else {
-                info!("Using regex to fetch version string. Will not work with DLCs.");
-                let mut current_version = downloads[0].version.clone().unwrap();
-                let original_string = current_version.clone();
-                let captures = regex.captures(&original_string);
-                if captures.is_some() {
-                    current_version = captures.unwrap()[1].trim().to_string();
-                } else {
-                    warn!("Game version does not follow standard GOG version style. Updating may not work right. Recommend you use delta updating instead.");
-                }
-                println!(
-                    "Installed version : {}. Version Online: {}",
-                    version, current_version
-                );
-                if version == current_version && !force {
-                    println!("No newer version to update to. Sorry!");
-                } else {
-                    if force && version == current_version {
-                        println!("Forcing reinstall due to --force option.");
+
+                        pb.inc(1);
                     }
-                    println!("Updating {} to version {}", name, current_version);
-                    let name = download(&gog, downloads, &DownloadOptions::default()).unwrap();
-                    println!("Installing.");
-                    info!("Opening installer file");
-                    let mut installer = File::open(&name[0]).unwrap();
-                    info!("Starting installation");
-                    install(
-                        &mut installer,
-                        path,
-                        name[0].clone(),
-                        &ShortcutOptions {
-                            menu: false,
-                            desktop: false,
-                            shortcuts: false,
-                        },
-                    );
-                    println!("Game finished updating!");
-                }
-            }
+                });
+                pb.finish_with_message("Updated game!");
+            });
         } else {
             error!("Could not find game on GOG");
             println!("Can't find game {} in your library.", name);
