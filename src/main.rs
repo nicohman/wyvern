@@ -364,11 +364,14 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                 });
             } else {
                 info!("Using regex to fetch version string. Will not work with DLCs.");
-                let current_version = regex
-                    .captures(&(downloads[0].version.clone().unwrap()))
-                    .unwrap()[1]
-                    .trim()
-                    .to_string();
+                let mut current_version = downloads[0].version.clone().unwrap();
+                let original_string = current_version.clone();
+                let captures = regex.captures(&original_string);
+                if captures.is_some() {
+                    current_version = captures.unwrap()[1].trim().to_string();
+                } else {
+                    warn!("Game version does not follow standard GOG version style. Updating may not work right. Recommend you use delta updating instead.");
+                }
                 println!(
                     "Installed version : {}. Version Online: {}",
                     version, current_version
