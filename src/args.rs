@@ -16,67 +16,10 @@ pub enum Command {
     },
     #[structopt(name = "down", alias = "download", about = "Download specific game")]
     Download {
-        #[structopt(short = "i", long = "id", help = "download id")]
-        id: Option<i64>,
-        #[structopt(short = "s", long = "search", help = "search manually")]
-        search: Option<String>,
-        #[structopt(parse(from_os_str))]
-        #[structopt(
-            short = "n",
-            long = "install",
-            help = "install downloaded game to path"
-        )]
-        install_after: Option<PathBuf>,
-        #[structopt(
-            short = "w",
-            long = "windows-auto",
-            help = "Download windows version if no linux is available"
-        )]
-        windows_auto: bool,
-        #[structopt(long = "force-windows", help = "Force downloading windows version")]
-        windows_force: bool,
-        #[structopt(
-            short = "f",
-            long = "first",
-            help = "When searching, use first result without waiting for selection"
-        )]
-        first: bool,
-        #[structopt(short = "a", long = "all", help = "Download all games in your library")]
-        all: bool,
-        #[structopt(
-            short = "d",
-            long = "desktop",
-            help = "Add a desktop shortcut for the installed game"
-        )]
-        desktop: bool,
-        #[structopt(
-            short = "m",
-            long = "menu",
-            help = "Add an application menu shortcut for the installed game"
-        )]
-        menu: bool,
-        #[structopt(
-            short = "c",
-            long = "shortcuts",
-            help = "Add both kinds of shortcuts for the installed game"
-        )]
-        shortcuts: bool,
-        #[structopt(short = "D", long = "dlc", help = "Download DLCs as well")]
-        dlc: bool,
-        #[structopt(
-            short = "e",
-            long = "extras",
-            help = "Download only a game's extra goodies"
-        )]
-        extras: bool,
-        #[structopt(short = "r", long = "resume", help = "Resume downloading games")]
-        resume: bool,
-        #[structopt(
-            short = "O",
-            long = "original-name",
-            help = "Preserve the file's original name"
-        )]
-        original: bool,
+        #[structopt(flatten)]
+        options: DownloadOptions,
+        #[structopt(flatten)]
+        shortcuts: ShortcutOptions,
     },
     #[cfg(feature = "eidolonint")]
     #[structopt(
@@ -97,24 +40,8 @@ pub enum Command {
         installer_name: String,
         #[structopt(parse(from_os_str))]
         path: PathBuf,
-        #[structopt(
-            short = "d",
-            long = "desktop",
-            help = "Add a desktop shortcut for the installed game"
-        )]
-        desktop: bool,
-        #[structopt(
-            short = "m",
-            long = "menu",
-            help = "Add an application menu shortcut for the installed game"
-        )]
-        menu: bool,
-        #[structopt(
-            short = "c",
-            long = "shortcuts",
-            help = "Add both kinds of shortcuts for the installed game"
-        )]
-        shortcuts: bool,
+        #[structopt(flatten)]
+        shortcuts: ShortcutOptions,
     },
     #[structopt(
         name = "update",
@@ -210,4 +137,71 @@ pub enum Connect {
     },
     #[structopt(name = "claim", about = "Claim all available GOG Connect games")]
     ClaimAll,
+}
+#[derive(StructOpt, Debug)]
+pub struct ShortcutOptions {
+    #[structopt(
+        short = "d",
+        long = "desktop",
+        help = "Add a desktop shortcut for the installed game"
+    )]
+    pub desktop: bool,
+    #[structopt(
+        short = "m",
+        long = "menu",
+        help = "Add an application menu shortcut for the installed game"
+    )]
+    pub menu: bool,
+    #[structopt(
+        short = "c",
+        long = "shortcuts",
+        help = "Add both kinds of shortcuts for the installed game"
+    )]
+    pub shortcuts: bool,
+}
+#[derive(StructOpt, Debug, Default)]
+pub struct DownloadOptions {
+    #[structopt(short = "i", long = "id", help = "download id")]
+    pub id: Option<i64>,
+    #[structopt(short = "s", long = "search", help = "search manually")]
+    pub search: Option<String>,
+    #[structopt(parse(from_os_str))]
+    #[structopt(
+        short = "n",
+        long = "install",
+        help = "install downloaded game to path"
+    )]
+    pub install_after: Option<PathBuf>,
+    #[structopt(
+        short = "w",
+        long = "windows-auto",
+        help = "Download windows version if no linux is available"
+    )]
+    pub windows_auto: bool,
+    #[structopt(long = "force-windows", help = "Force downloading windows version")]
+    pub windows_force: bool,
+    #[structopt(
+        short = "f",
+        long = "first",
+        help = "When searching, use first result without waiting for selection"
+    )]
+    pub first: bool,
+    #[structopt(short = "a", long = "all", help = "Download all games in your library")]
+    pub all: bool,
+    #[structopt(short = "D", long = "dlc", help = "Download DLCs as well")]
+    pub dlc: bool,
+    #[structopt(
+        short = "e",
+        long = "extras",
+        help = "Download only a game's extra goodies"
+    )]
+    pub extras: bool,
+    #[structopt(short = "r", long = "resume", help = "Resume downloading games")]
+    pub resume: bool,
+    #[structopt(
+        short = "O",
+        long = "original-name",
+        help = "Preserve the file's original name"
+    )]
+    pub original: bool,
 }

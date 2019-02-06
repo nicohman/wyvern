@@ -28,6 +28,7 @@ mod sync;
 use args::Command::Download;
 use args::Command::*;
 use args::Wyvern;
+use args::{DownloadOptions, ShortcutOptions};
 use config::*;
 use crc::crc32;
 use curl::easy::Easy;
@@ -87,33 +88,21 @@ fn main() -> Result<(), ::std::io::Error> {
             }
         }
         Download {
-            id,
-            search,
-            install_after,
-            windows_auto,
-            windows_force,
-            first,
-            all,
-            mut desktop,
-            mut menu,
-            shortcuts,
-            dlc,
-            extras,
-            resume,
-            original,
+            options,
+            mut shortcuts,
         } => {
-            if shortcuts {
-                desktop = true;
-                menu = true;
+            if shortcuts.shortcuts {
+                shortcuts.desktop = true;
+                shortcuts.menu = true;
             }
-            if let Some(search) = search {
+            if let Some(search) = options.search.clone() {
                 info!("Searching for games");
                 let search_results =
                     gog.get_filtered_products(FilterParams::from_one(Search(search)));
                 if search_results.is_ok() {
                     info!("Game search results OK");
                     let e = search_results.unwrap().products;
-                    if !first {
+                    if !options.first {
                         for (idx, pd) in e.iter().enumerate() {
                             println!("{}. {} - {}", idx, pd.title, pd.id);
                         }
@@ -129,26 +118,16 @@ fn main() -> Result<(), ::std::io::Error> {
                                     let details = gog.get_game_details(e[i].id).unwrap();
                                     let pname = details.title.clone();
                                     info!("Beginning download process");
-                                    let (name, downloaded_windows) = download_prep(
-                                        &gog,
-                                        details,
-                                        windows_auto,
-                                        windows_force,
-                                        dlc,
-                                        extras,
-                                        resume,
-                                        original,
-                                    )
-                                    .unwrap();
-                                    if install_after.is_some() && !downloaded_windows {
+                                    let (name, downloaded_windows) =
+                                        download_prep(&gog, details, &options).unwrap();
+                                    if options.install_after.is_some() && !downloaded_windows {
                                         println!("Installing game");
                                         info!("Installing game");
                                         install_all(
                                             name,
-                                            install_after.unwrap(),
+                                            options.install_after.unwrap(),
                                             pname,
-                                            desktop,
-                                            menu,
+                                            &shortcuts,
                                         );
                                     }
                                     break;
@@ -166,65 +145,36 @@ fn main() -> Result<(), ::std::io::Error> {
                         let details = gog.get_game_details(e[0].id).unwrap();
                         let pname = details.title.clone();
                         info!("Beginning download process");
-                        let (name, downloaded_windows) = download_prep(
-                            &gog,
-                            details,
-                            windows_auto,
-                            windows_force,
-                            dlc,
-                            extras,
-                            resume,
-                            original,
-                        )
-                        .unwrap();
-                        if install_after.is_some() && !downloaded_windows {
+                        let (name, downloaded_windows) =
+                            download_prep(&gog, details, &options).unwrap();
+                        if options.install_after.is_some() && !downloaded_windows {
                             println!("Installing game");
                             info!("Installing game");
-                            install_all(name, install_after.unwrap(), pname, desktop, menu);
+                            install_all(name, options.install_after.unwrap(), pname, &shortcuts);
                         }
                     }
                 } else {
                     println!("Could not find any games.");
                 }
-            } else if let Some(id) = id {
+            } else if let Some(id) = options.id {
                 let details = gog.get_game_details(id).unwrap();
                 let pname = details.title.clone();
                 info!("Beginning download process");
-                let (name, downloaded_windows) = download_prep(
-                    &gog,
-                    details,
-                    windows_auto,
-                    windows_force,
-                    dlc,
-                    extras,
-                    resume,
-                    original,
-                )
-                .unwrap();
-                if install_after.is_some() && !downloaded_windows {
+                let (name, downloaded_windows) = download_prep(&gog, details, &options).unwrap();
+                if options.install_after.is_some() && !downloaded_windows {
                     println!("Installing game");
                     info!("Installing game");
-                    install_all(name, install_after.unwrap(), pname, desktop, menu);
+                    install_all(name, options.install_after.unwrap(), pname, &shortcuts);
                 }
-            } else if all {
+            } else if options.all {
                 println!("Downloading all games in library");
                 let games = gog.get_games().unwrap();
                 for game in games {
                     let details = gog.get_game_details(game).unwrap();
                     info!("Beginning download process");
-                    download_prep(
-                        &gog,
-                        details,
-                        windows_auto,
-                        windows_force,
-                        dlc,
-                        extras,
-                        resume,
-                        original,
-                    )
-                    .unwrap();
+                    download_prep(&gog, details, &options).unwrap();
                 }
-                if install_after.is_some() {
+                if options.install_after.is_some() {
                     println!("--install does not work with --all");
                 }
             } else {
@@ -234,19 +184,17 @@ fn main() -> Result<(), ::std::io::Error> {
         Install {
             installer_name,
             path,
-            mut desktop,
-            mut menu,
-            shortcuts,
+            mut shortcuts,
         } => {
-            if shortcuts {
-                desktop = true;
-                menu = true;
+            if shortcuts.shortcuts {
+                shortcuts.desktop = true;
+                shortcuts.menu = true;
             }
             info!("Opening installer");
             let mut installer = File::open(&installer_name);
             if installer.is_ok() {
                 info!("Starting installation");
-                install(&mut installer.unwrap(), path, installer_name, desktop, menu);
+                install(&mut installer.unwrap(), path, installer_name, &shortcuts);
             } else {
                 error!(
                     "Could not open installer. Error: {}",
@@ -432,12 +380,21 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, force: bool, delta:
                         println!("Forcing reinstall due to --force option.");
                     }
                     println!("Updating {} to version {}", name, current_version);
-                    let name = download(&gog, downloads, false, false).unwrap();
+                    let name = download(&gog, downloads, &DownloadOptions::default()).unwrap();
                     println!("Installing.");
                     info!("Opening installer file");
                     let mut installer = File::open(&name[0]).unwrap();
                     info!("Starting installation");
-                    install(&mut installer, path, name[0].clone(), false, false);
+                    install(
+                        &mut installer,
+                        path,
+                        name[0].clone(),
+                        &ShortcutOptions {
+                            menu: false,
+                            desktop: false,
+                            shortcuts: false,
+                        },
+                    );
                     println!("Game finished updating!");
                 }
             }
@@ -464,13 +421,13 @@ fn parse_gameinfo(ginfo: String) -> GameInfo {
         version: version,
     }
 }
-fn shortcuts(name: &String, path: &std::path::Path, desktop: bool, menu: bool) {
-    if menu || desktop {
+fn shortcuts(name: &String, path: &std::path::Path, shortcut_opts: &ShortcutOptions) {
+    if shortcut_opts.menu || shortcut_opts.desktop {
         info!("Creating shortcuts");
         let game_path = current_dir().unwrap().join(&path);
         info!("Creating text of shortcut");
         let shortcut = desktop_shortcut(name.as_str(), &game_path);
-        if menu {
+        if shortcut_opts.menu {
             info!("Adding menu shortcut");
             let desktop_path = dirs::home_dir().unwrap().join(format!(
                 ".local/share/applications/gog_com-{}_1.desktop",
@@ -490,7 +447,7 @@ fn shortcuts(name: &String, path: &std::path::Path, desktop: bool, menu: bool) {
                 );
             }
         }
-        if desktop {
+        if shortcut_opts.desktop {
             info!("Adding desktop shortcut");
             let desktop_path = dirs::home_dir()
                 .unwrap()
@@ -513,25 +470,29 @@ fn shortcuts(name: &String, path: &std::path::Path, desktop: bool, menu: bool) {
         }
     }
 }
-fn install_all(names: Vec<String>, path: PathBuf, name: String, desktop: bool, menu: bool) {
+fn install_all(names: Vec<String>, path: PathBuf, name: String, shortcut_opts: &ShortcutOptions) {
     for name in names {
         info!("Installing {}", name);
         let mut installer = File::open(&name).expect("Could not open installer file");
-        install(&mut installer, path.clone(), name.clone(), false, false);
+        install(
+            &mut installer,
+            path.clone(),
+            name.clone(),
+            &ShortcutOptions {
+                menu: false,
+                desktop: false,
+                shortcuts: false,
+            },
+        );
     }
-    shortcuts(&name, path.as_path(), desktop, menu);
+    shortcuts(&name, path.as_path(), shortcut_opts);
 }
 fn download_prep(
     gog: &Gog,
     details: GameDetails,
-    windows_auto: bool,
-    windows_force: bool,
-    dlc: bool,
-    extras: bool,
-    resume: bool,
-    original: bool,
+    options: &DownloadOptions,
 ) -> Result<(Vec<String>, bool), Error> {
-    if extras {
+    if options.extras {
         println!("Downloading extras for game {}", details.title);
         let folder_name = PathBuf::from(format!("{} Extras", details.title));
         if fs::metadata(&folder_name).is_err() {
@@ -598,18 +559,18 @@ fn download_prep(
         }
         std::process::exit(0);
     } else {
-        if details.downloads.linux.is_some() && !windows_force {
+        if details.downloads.linux.is_some() && !options.windows_force {
             info!("Downloading linux downloads");
             let name;
-            if dlc {
+            if options.dlc {
                 info!("Downloading DLC");
-                name = download(gog, all_downloads(details, true), resume, original).unwrap();
+                name = download(gog, all_downloads(details, true), options).unwrap();
             } else {
-                name = download(gog, details.downloads.linux.unwrap(), resume, original).unwrap();
+                name = download(gog, details.downloads.linux.unwrap(), options).unwrap();
             }
             return Ok((name, false));
         } else {
-            if !windows_auto && !windows_force {
+            if !options.windows_auto && !options.windows_force {
                 info!("Asking user about downloading windows version");
                 let mut choice = String::new();
                 loop {
@@ -621,19 +582,13 @@ fn download_prep(
                             println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
                             info!("Downloading windows downloads");
                             let name;
-                            if dlc {
+                            if options.dlc {
                                 info!("Downloading DLC as well");
                                 name =
-                                    download(&gog, all_downloads(details, false), resume, original)
-                                        .unwrap();
+                                    download(&gog, all_downloads(details, false), options).unwrap();
                             } else {
-                                name = download(
-                                    gog,
-                                    details.downloads.windows.unwrap(),
-                                    resume,
-                                    original,
-                                )
-                                .unwrap();
+                                name = download(gog, details.downloads.windows.unwrap(), options)
+                                    .unwrap();
                             }
                             return Ok((name, true));
                         }
@@ -645,24 +600,23 @@ fn download_prep(
                     }
                 }
             } else {
-                if !windows_force {
+                if !options.windows_force {
                     println!("No linux version available. Downloading windows version.");
                 }
                 info!("Downloading windows downloads");
                 let name;
-                if dlc {
+                if options.dlc {
                     info!("Downloading DLC as well");
-                    name = download(&gog, all_downloads(details, false), resume, original).unwrap();
+                    name = download(&gog, all_downloads(details, false), options).unwrap();
                 } else {
-                    name = download(gog, details.downloads.windows.unwrap(), resume, original)
-                        .unwrap();
+                    name = download(gog, details.downloads.windows.unwrap(), options).unwrap();
                 }
                 return Ok((name, true));
             }
         }
     }
 }
-fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, menu: bool) {
+fn install(installer: &mut File, path: PathBuf, name: String, shortcut_opts: &ShortcutOptions) {
     info!("Starting installer extraction process");
     extract(
         installer,
@@ -745,7 +699,7 @@ fn install(installer: &mut File, path: PathBuf, name: String, desktop: bool, men
         add_game(game);
         println!("Added game to eidolon registry!");
     }
-    shortcuts(&name, path.as_path(), desktop, menu);
+    shortcuts(&name, path.as_path(), shortcut_opts);
 }
 pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
@@ -779,8 +733,7 @@ fn list_owned(gog: Gog) -> Result<(), Error> {
 fn download(
     gog: &Gog,
     downloads: Vec<gog::gog::Download>,
-    resume: bool,
-    original: bool,
+    options: &DownloadOptions,
 ) -> Result<Vec<String>, Error> {
     info!("Downloading files");
     let mut names = vec![];
@@ -815,11 +768,11 @@ fn download(
             let mut name = names[idx].clone();
             let url = response.url().clone();
             let final_name = url.path_segments().unwrap().last().unwrap().to_string();
-            if original {
+            if options.original {
                 name = final_name;
                 names[idx] = name.clone();
             }
-            if resume {
+            if options.resume {
                 if let Ok(mut meta) = fs::metadata(&name) {
                     if meta.len() >= total_size {
                         println!("Resuming {}, {} of {}", name, idx + 1, count);
