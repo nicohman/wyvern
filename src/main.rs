@@ -253,48 +253,48 @@ fn main() -> Result<(), ::std::io::Error> {
                                         }
                                     }
                                 }
-                                let extra_responses: Vec<
-                                    Result<reqwest::Response, Error>,
-                                > = details
-                                    .extras
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(i, x)| {
-                                        if !all {
-                                            return to_down.contains(i);
-                                        } else {
-                                            return true;
-                                        }
-                                    })
-                                    .map(|(i, x)| {
-                                        info!("Finding URL");
-                                        let mut url = "https://gog.com".to_string() + &x.manual_url;
-                                        let mut response;
-                                        loop {
-                                            let temp_response =
-                                                gog.client_noredirect.borrow().get(&url).send();
-                                            if temp_response.is_ok() {
-                                                response = temp_response.unwrap();
-                                                let headers = response.headers();
-                                                // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
-                                                if headers.contains_key("location") {
-                                                    url = headers
-                                                        .get("location")
-                                                        .unwrap()
-                                                        .to_str()
-                                                        .unwrap()
-                                                        .to_string();
-                                                } else {
-                                                    break;
-                                                }
+                                let extra_responses: Vec<Result<reqwest::Response, Error>> =
+                                    details
+                                        .extras
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(i, _x)| {
+                                            if !all {
+                                                return to_down.contains(i);
                                             } else {
-                                                return Err(temp_response.err().unwrap().into());
+                                                return true;
                                             }
-                                        }
-                                        Ok(response)
-                                    })
-                                    .collect();
-                                for (i, extra) in extra_responses.into_iter().enumerate() {
+                                        })
+                                        .map(|(_i, x)| {
+                                            info!("Finding URL");
+                                            let mut url =
+                                                "https://gog.com".to_string() + &x.manual_url;
+                                            let mut response;
+                                            loop {
+                                                let temp_response =
+                                                    gog.client_noredirect.borrow().get(&url).send();
+                                                if temp_response.is_ok() {
+                                                    response = temp_response.unwrap();
+                                                    let headers = response.headers();
+                                                    // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
+                                                    if headers.contains_key("location") {
+                                                        url = headers
+                                                            .get("location")
+                                                            .unwrap()
+                                                            .to_str()
+                                                            .unwrap()
+                                                            .to_string();
+                                                    } else {
+                                                        break;
+                                                    }
+                                                } else {
+                                                    return Err(temp_response.err().unwrap().into());
+                                                }
+                                            }
+                                            Ok(response)
+                                        })
+                                        .collect();
+                                for extra in extra_responses.into_iter() {
                                     let mut extra = extra.expect("Couldn't fetch extra");
                                     let mut real_response = gog
                                         .client_noredirect
@@ -396,7 +396,7 @@ fn main() -> Result<(), ::std::io::Error> {
     };
     Ok(())
 }
-fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, dlc: bool) {
+fn update(gog: &Gog, _path: PathBuf, game_info_path: PathBuf, dlc: bool) {
     if let Ok(mut gameinfo) = File::open(&game_info_path) {
         let mut ginfo_string = String::new();
         info!("Reading in gameinfo file");
@@ -427,7 +427,7 @@ fn update(gog: &Gog, path: PathBuf, game_info_path: PathBuf, dlc: bool) {
             info!("Fetching installer data.");
             let data = gog.extract_data(downloads).unwrap();
             println!("Fetched installer data. Checking files.");
-            io::stdout().flush();
+            io::stdout().flush().expect("Couldn't flush stdout");
             let access_token = gog.token.borrow().access_token.clone();
             data.par_iter().for_each(|data| {
                 let pb = ProgressBar::new(data.files.len() as u64);
@@ -804,9 +804,8 @@ fn download(
         names.push(download.name.clone());
     }
     info!("Getting responses to requests");
-    let responses = gog.download_game(downloads.clone());
-    let count = responses.len();
-    for (idx, mut response) in responses.into_iter().enumerate() {
+    let count = downloads.len();
+    for idx in 0..count {
         let mut responses = gog.download_game(vec![downloads[idx].clone()]);
         let mut response = responses.remove(0);
         if response.is_err() {
