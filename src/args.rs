@@ -198,8 +198,8 @@ pub struct DownloadOptions {
     pub resume: bool,
     #[structopt(
         short = "O",
-        long = "original-name",
-        help = "Preserve the file's original name"
+        long = "no-original-name",
+        help = "Don't preserve the original game name"
     )]
     pub original: bool,
 }
