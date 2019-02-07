@@ -85,7 +85,7 @@ fn main() -> Result<(), ::std::io::Error> {
             }
         }
         Download {
-            options,
+            mut options,
             mut shortcuts,
         } => {
             if shortcuts.shortcuts {
