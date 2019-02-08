@@ -92,9 +92,7 @@ fn main() -> Result<(), ::std::io::Error> {
                 shortcuts.desktop = true;
                 shortcuts.menu = true;
             }
-            if options.original {
-                options.original = false;
-            }
+            options.original = !options.original;
             if let Some(search) = options.search.clone() {
                 info!("Searching for games");
                 let search_results =
@@ -256,47 +254,47 @@ fn main() -> Result<(), ::std::io::Error> {
                                         }
                                     }
                                 }
-                                let extra_responses: Vec<
-                                    Result<reqwest::Response, Error>,
-                                > = details
-                                    .extras
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(i, _x)| {
-                                        if !all {
-                                            return to_down.contains(i);
-                                        } else {
-                                            return true;
-                                        }
-                                    })
-                                    .map(|(_i, x)| {
-                                        info!("Finding URL");
-                                        let mut url = "https://gog.com".to_string() + &x.manual_url;
-                                        let mut response;
-                                        loop {
-                                            let temp_response =
-                                                gog.client_noredirect.borrow().get(&url).send();
-                                            if temp_response.is_ok() {
-                                                response = temp_response.unwrap();
-                                                let headers = response.headers();
-                                                // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
-                                                if headers.contains_key("location") {
-                                                    url = headers
-                                                        .get("location")
-                                                        .unwrap()
-                                                        .to_str()
-                                                        .unwrap()
-                                                        .to_string();
-                                                } else {
-                                                    break;
-                                                }
+                                let extra_responses: Vec<Result<reqwest::Response, Error>> =
+                                    details
+                                        .extras
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(i, _x)| {
+                                            if !all {
+                                                return to_down.contains(i);
                                             } else {
-                                                return Err(temp_response.err().unwrap().into());
+                                                return true;
                                             }
-                                        }
-                                        Ok(response)
-                                    })
-                                    .collect();
+                                        })
+                                        .map(|(_i, x)| {
+                                            info!("Finding URL");
+                                            let mut url =
+                                                "https://gog.com".to_string() + &x.manual_url;
+                                            let mut response;
+                                            loop {
+                                                let temp_response =
+                                                    gog.client_noredirect.borrow().get(&url).send();
+                                                if temp_response.is_ok() {
+                                                    response = temp_response.unwrap();
+                                                    let headers = response.headers();
+                                                    // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
+                                                    if headers.contains_key("location") {
+                                                        url = headers
+                                                            .get("location")
+                                                            .unwrap()
+                                                            .to_str()
+                                                            .unwrap()
+                                                            .to_string();
+                                                    } else {
+                                                        break;
+                                                    }
+                                                } else {
+                                                    return Err(temp_response.err().unwrap().into());
+                                                }
+                                            }
+                                            Ok(response)
+                                        })
+                                        .collect();
                                 for extra in extra_responses.into_iter() {
                                     let mut extra = extra.expect("Couldn't fetch extra");
                                     let mut real_response = gog
