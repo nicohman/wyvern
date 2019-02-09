@@ -254,47 +254,47 @@ fn main() -> Result<(), ::std::io::Error> {
                                         }
                                     }
                                 }
-                                let extra_responses: Vec<Result<reqwest::Response, Error>> =
-                                    details
-                                        .extras
-                                        .iter()
-                                        .enumerate()
-                                        .filter(|(i, _x)| {
-                                            if !all {
-                                                return to_down.contains(i);
-                                            } else {
-                                                return true;
-                                            }
-                                        })
-                                        .map(|(_i, x)| {
-                                            info!("Finding URL");
-                                            let mut url =
-                                                "https://gog.com".to_string() + &x.manual_url;
-                                            let mut response;
-                                            loop {
-                                                let temp_response =
-                                                    gog.client_noredirect.borrow().get(&url).send();
-                                                if temp_response.is_ok() {
-                                                    response = temp_response.unwrap();
-                                                    let headers = response.headers();
-                                                    // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
-                                                    if headers.contains_key("location") {
-                                                        url = headers
-                                                            .get("location")
-                                                            .unwrap()
-                                                            .to_str()
-                                                            .unwrap()
-                                                            .to_string();
-                                                    } else {
-                                                        break;
-                                                    }
+                                let extra_responses: Vec<
+                                    Result<reqwest::Response, Error>,
+                                > = details
+                                    .extras
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(i, _x)| {
+                                        if !all {
+                                            return to_down.contains(i);
+                                        } else {
+                                            return true;
+                                        }
+                                    })
+                                    .map(|(_i, x)| {
+                                        info!("Finding URL");
+                                        let mut url = "https://gog.com".to_string() + &x.manual_url;
+                                        let mut response;
+                                        loop {
+                                            let temp_response =
+                                                gog.client_noredirect.borrow().get(&url).send();
+                                            if temp_response.is_ok() {
+                                                response = temp_response.unwrap();
+                                                let headers = response.headers();
+                                                // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
+                                                if headers.contains_key("location") {
+                                                    url = headers
+                                                        .get("location")
+                                                        .unwrap()
+                                                        .to_str()
+                                                        .unwrap()
+                                                        .to_string();
                                                 } else {
-                                                    return Err(temp_response.err().unwrap().into());
+                                                    break;
                                                 }
+                                            } else {
+                                                return Err(temp_response.err().unwrap().into());
                                             }
-                                            Ok(response)
-                                        })
-                                        .collect();
+                                        }
+                                        Ok(response)
+                                    })
+                                    .collect();
                                 for extra in extra_responses.into_iter() {
                                     let mut extra = extra.expect("Couldn't fetch extra");
                                     let mut real_response = gog
@@ -835,12 +835,13 @@ fn download(
                 name = final_name;
                 names[idx] = name.clone();
             }
+            let temp_name = name.clone() + ".tmp";
             if options.resume {
-                if let Ok(mut meta) = fs::metadata(&name) {
+                if let Ok(mut meta) = fs::metadata(&temp_name) {
                     if meta.len() >= total_size {
                         println!("Resuming {}, {} of {}", name, idx + 1, count);
                         pb.set_position(meta.len());
-                        let mut fd = OpenOptions::new().append(true).open(&name)?;
+                        let mut fd = OpenOptions::new().append(true).open(&temp_name)?;
                         let handler = WriteHandler {
                             writer: fd,
                             pb: Some(pb),
@@ -870,13 +871,14 @@ fn download(
             }
             println!("Downloading {}, {} of {}", name, idx + 1, count);
             info!("Creating file");
-            let mut fd = fs::File::create(&name)?;
+            let mut fd = fs::File::create(&temp_name)?;
             let mut perms = fd.metadata()?.permissions();
             info!("Setting permissions to executable");
             perms.set_mode(0o744);
             fd.set_permissions(perms)?;
             let mut pb_read = pb.wrap_read(response);
             io::copy(&mut pb_read, &mut fd)?;
+            fs::rename(&temp_name, &name)?;
             pb.finish();
         }
     }
