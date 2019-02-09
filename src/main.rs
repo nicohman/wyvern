@@ -75,13 +75,29 @@ fn main() -> Result<(), ::std::io::Error> {
         .expect("Couldn't set up logger");
     confy::store("wyvern", config)?;
     match args.command {
-        List { id } => {
+        List { id, json } => {
+            let mut games = GamesList { games: vec![] };
             if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
-                println!("Title - GameID");
-                println!("{} - {}", details.title, id);
+                games.games.push((details.title.clone(), id));
             } else {
-                list_owned(gog).unwrap();
+                games.games = gog
+                    .get_all_filtered_products(FilterParams::from_one(MediaType(1)))
+                    .expect("Couldn't fetch games")
+                    .into_iter()
+                    .map(|x| (x.title, x.id))
+                    .collect();
+            }
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&games).expect("Couldn't deserialize games list")
+                );
+            } else {
+                println!("Title - GameID");
+                for (title, id) in games.games {
+                    println!("{} - {}", title, id);
+                }
             }
         }
         Download {
@@ -786,14 +802,6 @@ pub fn login() -> Token {
     }
     token
 }
-fn list_owned(gog: Gog) -> Result<(), Error> {
-    let games = gog.get_all_filtered_products(FilterParams::from_one(MediaType(1)))?;
-    println!("Title - GameID");
-    for game in games {
-        println!("{} - {}", game.title, game.id);
-    }
-    Ok(())
-}
 fn download(
     gog: &Gog,
     downloads: Vec<gog::gog::Download>,
@@ -938,4 +946,8 @@ impl Handler for WriteHandler {
         }
         Ok(data.len())
     }
+}
+#[derive(Serialize, Debug)]
+struct GamesList {
+    games: Vec<(String, i64)>,
 }

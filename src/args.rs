@@ -9,10 +9,12 @@ pub struct Wyvern {
 }
 #[derive(StructOpt, Debug)]
 pub enum Command {
-    #[structopt(name = "ls", about = "List all games you own")]
+    #[structopt(name = "ls", alias = "list", about = "List all games you own")]
     List {
         #[structopt(short = "i", long = "id", help = "search with id")]
         id: Option<i64>,
+        #[structopt(short = "j", long = "json", help = "Display games in JSON format")]
+        json: bool,
     },
     #[structopt(name = "down", alias = "download", about = "Download specific game")]
     Download {
