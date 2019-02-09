@@ -130,7 +130,11 @@ pub enum Sync {
 }
 #[derive(StructOpt, Debug)]
 pub enum Connect {
-    #[structopt(name = "ls", about = "List available GOG Connect games")]
+    #[structopt(
+        name = "ls",
+        alias = "list",
+        about = "List available GOG Connect games"
+    )]
     ListConnect {
         #[structopt(
             short = "c",
@@ -138,8 +142,10 @@ pub enum Connect {
             help = "only show games that are currently claimable"
         )]
         claim: bool,
-        #[structopt(short = "q", long = "quiet", help = "only print game names")]
+        #[structopt(short = "q", long = "quiet", help = "Only print game names")]
         quiet: bool,
+        #[structopt(short = "j", long = "json", help = "Print results in JSON format")]
+        json: bool,
     },
     #[structopt(name = "claim", about = "Claim all available GOG Connect games")]
     ClaimAll,
