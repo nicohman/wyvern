@@ -123,6 +123,7 @@ fn main() -> Result<(), ::std::io::Error> {
                         }
                         let mut choice = String::new();
                         loop {
+                            choice = String::new();
                             print!("Select a game to download:");
                             io::stdout().flush().unwrap();
                             io::stdin().read_line(&mut choice).unwrap();
@@ -223,6 +224,7 @@ fn main() -> Result<(), ::std::io::Error> {
                     }
                     let mut choice = String::new();
                     loop {
+                        choice = String::new();
                         print!("Select a game to download extras from:");
                         io::stdout().flush().unwrap();
                         io::stdin().read_line(&mut choice).unwrap();
@@ -245,6 +247,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                     }
                                     let mut choices = String::new();
                                     loop {
+                                        choices = String::new();
                                         print!("Type a list of extras you want to download as numbers seperated by commas:");
                                         io::stdout().flush().unwrap();
                                         io::stdin().read_line(&mut choices).unwrap();
@@ -676,6 +679,7 @@ fn download_prep(
             info!("Asking user about downloading windows version");
             let mut choice = String::new();
             loop {
+                choice = String::new();
                 print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
                 io::stdout().flush().unwrap();
                 io::stdin().read_line(&mut choice).unwrap();
@@ -849,6 +853,7 @@ pub fn login() -> Token {
     let mut code = String::new();
     let token: Token;
     loop {
+        code = String::new();
         info!("Atttempting to read input line for token");
         io::stdin().read_line(&mut code).unwrap();
         info!("Creating token from input");
