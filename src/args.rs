@@ -50,6 +50,8 @@ pub enum Command {
         path: PathBuf,
         #[structopt(flatten)]
         shortcuts: ShortcutOptions,
+        #[structopt(short = "w", long = "windows", help = "Install a windows game")]
+        windows: bool,
     },
     #[structopt(
         name = "update",

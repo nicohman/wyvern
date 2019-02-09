@@ -50,6 +50,7 @@ use std::io::SeekFrom::*;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::process::Command;
 use structopt::StructOpt;
 fn main() -> Result<(), ::std::io::Error> {
     #[cfg(not(debug_assertions))]
@@ -134,7 +135,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                     info!("Beginning download process");
                                     let (name, downloaded_windows) =
                                         download_prep(&gog, details, &options).unwrap();
-                                    if options.install_after.is_some() && !downloaded_windows {
+                                    if options.install_after.is_some() {
                                         println!("Installing game");
                                         info!("Installing game");
                                         install_all(
@@ -142,6 +143,7 @@ fn main() -> Result<(), ::std::io::Error> {
                                             options.install_after.unwrap(),
                                             pname,
                                             &shortcuts,
+                                            downloaded_windows,
                                         );
                                     }
                                     break;
@@ -161,10 +163,16 @@ fn main() -> Result<(), ::std::io::Error> {
                         info!("Beginning download process");
                         let (name, downloaded_windows) =
                             download_prep(&gog, details, &options).unwrap();
-                        if options.install_after.is_some() && !downloaded_windows {
+                        if options.install_after.is_some() {
                             println!("Installing game");
                             info!("Installing game");
-                            install_all(name, options.install_after.unwrap(), pname, &shortcuts);
+                            install_all(
+                                name,
+                                options.install_after.unwrap(),
+                                pname,
+                                &shortcuts,
+                                downloaded_windows,
+                            );
                         }
                     }
                 } else {
@@ -175,10 +183,16 @@ fn main() -> Result<(), ::std::io::Error> {
                 let pname = details.title.clone();
                 info!("Beginning download process");
                 let (name, downloaded_windows) = download_prep(&gog, details, &options).unwrap();
-                if options.install_after.is_some() && !downloaded_windows {
+                if options.install_after.is_some() {
                     println!("Installing game");
                     info!("Installing game");
-                    install_all(name, options.install_after.unwrap(), pname, &shortcuts);
+                    install_all(
+                        name,
+                        options.install_after.unwrap(),
+                        pname,
+                        &shortcuts,
+                        downloaded_windows,
+                    );
                 }
             } else if options.all {
                 println!("Downloading all games in library");
@@ -364,22 +378,20 @@ fn main() -> Result<(), ::std::io::Error> {
             installer_name,
             path,
             mut shortcuts,
+            windows,
         } => {
             if shortcuts.shortcuts {
                 shortcuts.desktop = true;
                 shortcuts.menu = true;
             }
-            info!("Opening installer");
-            let mut installer = File::open(&installer_name);
-            if installer.is_ok() {
-                info!("Starting installation");
-                install(&mut installer.unwrap(), path, installer_name, &shortcuts);
-            } else {
-                error!(
-                    "Could not open installer. Error: {}",
-                    installer.err().unwrap()
-                );
-            }
+            info!("Starting installation");
+            install(
+                installer_name.clone(),
+                path,
+                installer_name,
+                &shortcuts,
+                windows,
+            );
         }
         #[cfg(feature = "eidolonint")]
         UpdateEidolon { force, delta } => {
@@ -619,12 +631,19 @@ fn shortcuts(name: &String, path: &std::path::Path, shortcut_opts: &ShortcutOpti
         }
     }
 }
-fn install_all(names: Vec<String>, path: PathBuf, name: String, shortcut_opts: &ShortcutOptions) {
-    for name in names {
-        info!("Installing {}", name);
-        let mut installer = File::open(&name).expect("Could not open installer file");
+fn install_all(
+    names: Vec<String>,
+    path: PathBuf,
+    name: String,
+    shortcut_opts: &ShortcutOptions,
+    windows: bool,
+) {
+    for name in names
+        .iter()
+        .filter(|x| if windows { x.contains("exe") } else { true })
+    {
         install(
-            &mut installer,
+            name.as_str(),
             path.clone(),
             name.clone(),
             &ShortcutOptions {
@@ -632,6 +651,7 @@ fn install_all(names: Vec<String>, path: PathBuf, name: String, shortcut_opts: &
                 desktop: false,
                 shortcuts: false,
             },
+            windows,
         );
     }
     shortcuts(&name, path.as_path(), shortcut_opts);
@@ -696,90 +716,131 @@ fn download_prep(
         }
     }
 }
-fn install(installer: &mut File, path: PathBuf, name: String, shortcut_opts: &ShortcutOptions) {
+fn install(
+    installer: impl Into<String>,
+    path: PathBuf,
+    name: String,
+    shortcut_opts: &ShortcutOptions,
+    windows: bool,
+) {
     info!("Starting installer extraction process");
-    extract(
-        installer,
-        "/tmp",
-        ToExtract {
-            unpacker: false,
-            mojosetup: false,
-            data: true,
-        },
-    )
-    .unwrap();
-    info!("Opening extracted zip");
-    let file = File::open("/tmp/data.zip").unwrap();
-    // Extract code taken mostly from zip example
-    let archive = zip::ZipArchive::new(BufReader::new(file)).unwrap();
-    let len = archive.len();
-    let pb = ProgressBar::new(len as u64);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}")
-            .progress_chars("#>-"),
-    );
-    info!("Starting zip extraction process");
-    (0..len).into_par_iter().for_each(|i| {
-        info!("Starting extraction of file #{}. Opening archive", i);
-        let mut archive =
-            zip::ZipArchive::new(BufReader::new(File::open("/tmp/data.zip").unwrap())).unwrap();
-        info!("Getting file from archive");
-        let mut file = archive.by_index(i).unwrap();
-        let filtered_path = file
-            .sanitized_name()
-            .to_str()
-            .unwrap()
-            .replace("/noarch", "")
-            .replace("data/", "")
-            .to_owned();
-        //Extract only files for the game itself
-        if !filtered_path.contains("meta") && !filtered_path.contains("scripts") {
-            let outpath = path.clone().join(PathBuf::from(filtered_path));
-            if (&*file.name()).ends_with('/') {
-                info!("Creating dir");
-                fs::create_dir_all(&outpath).unwrap();
+    if windows {
+        info!("Extracting windows game using innoextract");
+        let output = Command::new("innoextract")
+            .arg("--exclude-temp")
+            .arg("--gog")
+            .arg("--output-dir")
+            .arg(path.to_str().expect("Couldn't convert path to string"))
+            .arg(installer.into())
+            .output();
+        if let Ok(output) = output {
+            if output.status.success() {
+                info!("innoextract successfully run");
+                return;
             } else {
-                if let Some(p) = outpath.parent() {
-                    if !p.exists() {
-                        fs::create_dir_all(&p).unwrap();
-                    }
-                }
-                info!("Creating file");
-                let mut outfile = fs::File::create(&outpath).unwrap();
-                info!("Copying to file");
-                io::copy(&mut file, &mut outfile).unwrap();
-            }
-            use std::os::unix::fs::PermissionsExt;
-            if let Some(mode) = file.unix_mode() {
-                info!("Setting permissions for file");
-                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+                error!("Could not run innoextract. Are you sure it's installed and in $PATH?");
+                error!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
+                error!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+                std::process::exit(64);
             }
         } else {
-            info!("File {} not being extracted", filtered_path);
+            error!("Could not run innoextract. Are youu sure it's installed and in $PATH?");
+            error!("Error: {:?}", output.err().unwrap());
+            std::process::exit(64);
         }
-        pb.inc(1);
-    });
-    pb.finish_with_message("Game installed!");
-    #[cfg(feature = "eidolonint")]
-    {
-        info!("Compiled with eidolon integration. Adding game to registry");
-        use libeidolon::games::*;
-        use libeidolon::helper::*;
-        use libeidolon::*;
-        let proc_name = create_procname(name.clone());
-        info!("Creating game object");
-        let game = Game {
-            name: proc_name,
-            pname: name,
-            command: current_dir().unwrap().to_str().unwrap().to_string(),
-            typeg: GameType::WyvernGOG,
-        };
-        info!("Adding game to eidolon");
-        add_game(game);
-        println!("Added game to eidolon registry!");
+    } else {
+        if let Ok(mut installer) = File::open(installer.into()) {
+            extract(
+                &mut installer,
+                "/tmp",
+                ToExtract {
+                    unpacker: false,
+                    mojosetup: false,
+                    data: true,
+                },
+            )
+            .unwrap();
+            info!("Opening extracted zip");
+            let file = File::open("/tmp/data.zip").unwrap();
+            // Extract code taken mostly from zip example
+            let archive = zip::ZipArchive::new(BufReader::new(file)).unwrap();
+            let len = archive.len();
+            let pb = ProgressBar::new(len as u64);
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template(
+                        "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}",
+                    )
+                    .progress_chars("#>-"),
+            );
+            info!("Starting zip extraction process");
+            (0..len).into_par_iter().for_each(|i| {
+                info!("Starting extraction of file #{}. Opening archive", i);
+                let mut archive =
+                    zip::ZipArchive::new(BufReader::new(File::open("/tmp/data.zip").unwrap()))
+                        .unwrap();
+                info!("Getting file from archive");
+                let mut file = archive.by_index(i).unwrap();
+                let filtered_path = file
+                    .sanitized_name()
+                    .to_str()
+                    .unwrap()
+                    .replace("/noarch", "")
+                    .replace("data/", "")
+                    .to_owned();
+                //Extract only files for the game itself
+                if !filtered_path.contains("meta") && !filtered_path.contains("scripts") {
+                    let outpath = path.clone().join(PathBuf::from(filtered_path));
+                    if (&*file.name()).ends_with('/') {
+                        info!("Creating dir");
+                        fs::create_dir_all(&outpath).unwrap();
+                    } else {
+                        if let Some(p) = outpath.parent() {
+                            if !p.exists() {
+                                fs::create_dir_all(&p).unwrap();
+                            }
+                        }
+                        info!("Creating file");
+                        let mut outfile = fs::File::create(&outpath).unwrap();
+                        info!("Copying to file");
+                        io::copy(&mut file, &mut outfile).unwrap();
+                    }
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(mode) = file.unix_mode() {
+                        info!("Setting permissions for file");
+                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+                    }
+                } else {
+                    info!("File {} not being extracted", filtered_path);
+                }
+                pb.inc(1);
+            });
+            pb.finish_with_message("Game installed!");
+            #[cfg(feature = "eidolonint")]
+            {
+                if !windows {
+                    info!("Compiled with eidolon integration. Adding game to registry");
+                    use libeidolon::games::*;
+                    use libeidolon::helper::*;
+                    use libeidolon::*;
+                    let proc_name = create_procname(name.clone());
+                    info!("Creating game object");
+                    let game = Game {
+                        name: proc_name,
+                        pname: name,
+                        command: current_dir().unwrap().to_str().unwrap().to_string(),
+                        typeg: GameType::WyvernGOG,
+                    };
+                    info!("Adding game to eidolon");
+                    add_game(game);
+                    println!("Added game to eidolon registry!");
+                }
+            }
+            shortcuts(&name, path.as_path(), shortcut_opts);
+        } else {
+            error!("Could not open installer file");
+        }
     }
-    shortcuts(&name, path.as_path(), shortcut_opts);
 }
 pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
