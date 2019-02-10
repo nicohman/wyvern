@@ -10,7 +10,7 @@ use std::fs::{self, File};
 use std::io::{self, *};
 use std::path::*;
 use std::process::*;
-pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
+pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) -> Gog {
     match args.command {
         Sync(Push { game_dir, sync_to }) => {
             if sync_saves.is_some() {
@@ -286,6 +286,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) {
         }
         _ => println!("Wow, you should not be seeing this message."),
     };
+    gog
 }
 fn sync(sync_from: PathBuf, sync_to: PathBuf, ignore_older: bool, force: bool) {
     let from_meta = fs::metadata(&sync_from);

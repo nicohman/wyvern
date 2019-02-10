@@ -3,13 +3,13 @@ use args::Connect::*;
 use gog::gog::connect::ConnectGameStatus::*;
 use gog::gog::connect::*;
 use gog::ErrorKind::*;
-pub fn parse_args(gog: gog::Gog, args: ::args::Wyvern) {
+pub fn parse_args(gog: gog::Gog, args: ::args::Wyvern) -> gog::Gog {
     let uid: i64 = gog.get_user_data().unwrap().user_id.parse().unwrap();
     info!("Getting GOG Connect steam account");
     let linked = gog.connect_account(uid);
     if linked.is_err() {
         error!("You don't have a steam account linked to GOG! Go to https://www.gog.com/connect to link one.");
-        return;
+        return gog;
     } else {
         info!("Scanning for Connect games");
         gog.connect_scan(uid).unwrap();
@@ -62,7 +62,8 @@ pub fn parse_args(gog: gog::Gog, args: ::args::Wyvern) {
             println!("Claimed all available games");
         }
         _ => error!("Tell someone about this, because it should not be happening"),
-    }
+    };
+    gog
 }
 #[derive(Serialize, Debug)]
 struct ConnectList {

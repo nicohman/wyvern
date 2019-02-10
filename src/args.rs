@@ -29,6 +29,7 @@ pub enum Command {
         all: bool,
         game: Option<String>,
     },
+    #[derive(Default)]
     #[cfg(feature = "eidolonint")]
     #[structopt(
         name = "update-eidolon",
@@ -68,6 +69,8 @@ pub enum Command {
         about = "Sync a game's saves to a specific location for backup"
     )]
     Sync(Sync),
+    #[structopt(name = "int", alias = "interactive", about = "Enter interactive mode")]
+    Interactive
 }
 #[derive(StructOpt, Debug)]
 pub enum Sync {
