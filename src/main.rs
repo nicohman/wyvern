@@ -106,6 +106,7 @@ fn parse_args(
                 );
             } else {
                 println!("Title - GameID");
+                games.games.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
                 for (title, id) in games.games {
                     println!("{} - {}", title, id);
                 }
@@ -220,7 +221,7 @@ fn parse_args(
                 error!("Did not specify a game to download. Exiting.");
             }
         }
-        Extras { game, all } => {
+        Extras { game, all, first } => {
             if let Some(search) = game {
                 if let Ok(results) =
                     gog.get_filtered_products(FilterParams::from_one(Search(search.clone())))
@@ -229,156 +230,99 @@ fn parse_args(
                     if e.len() < 1 {
                         error!("Found no games named {} in your library.", search)
                     }
-                    for (idx, pd) in e.iter().enumerate() {
-                        println!("{}. {} - {}", idx, pd.title, pd.id);
-                    }
-                    let mut choice = String::new();
-                    loop {
-                        choice = String::new();
-                        print!("Select a game to download extras from:");
-                        io::stdout().flush().unwrap();
-                        io::stdin().read_line(&mut choice).unwrap();
-                        let parsed = choice.trim().parse::<usize>();
-                        if let Ok(i) = parsed {
-                            if e.len() > i {
-                                info!("Fetching game details");
-                                let details = gog.get_game_details(e[i].id).unwrap();
-                                println!("Downloading extras for game {}", details.title);
-                                let folder_name =
-                                    PathBuf::from(format!("{} Extras", details.title));
-                                if fs::metadata(&folder_name).is_err() {
-                                    fs::create_dir(&folder_name)
-                                        .expect("Couldn't create extras folder");
-                                }
-                                let mut to_down: Vec<usize> = vec![];
-                                if !all {
-                                    for (i, ex) in details.extras.iter().enumerate() {
-                                        println!("{}. {}", i, ex.name);
-                                    }
-                                    let mut choices = String::new();
-                                    loop {
-                                        choices = String::new();
-                                        print!("Type a list of extras you want to download as numbers seperated by commas:");
-                                        io::stdout().flush().unwrap();
-                                        io::stdin().read_line(&mut choices).unwrap();
-                                        choices = choices.trim().to_string();
-                                        if choices.len() < 1 {
-                                            error!("Please enter a valid sequence of numbers");
-                                        } else {
-                                            let split = choices.split(",");
-                                            split
-                                                .filter_map(|x| {
-                                                    if x.len() < 1 {
-                                                        return None;
-                                                    } else {
-                                                        if let Ok(parsed) = x.parse::<usize>() {
-                                                            if parsed < details.extras.len() {
-                                                                return Some(parsed);
-                                                            } else {
-                                                                error!(
-                                                                "{} is not a valid extra number",
-                                                                x
-                                                            );
-                                                                return None;
-                                                            }
-                                                        } else {
-                                                            error!("{} is not a valid number", x);
-                                                            return None;
-                                                        }
-                                                    }
-                                                })
-                                                .for_each(|x| {
-                                                    to_down.push(x);
-                                                });
-                                        }
-                                        if to_down.len() > 0 {
-                                            println!("Downloading {:?}", to_down);
-                                            break;
-                                        }
-                                    }
-                                }
-                                let extra_responses: Vec<
-                                    Result<reqwest::Response, Error>,
-                                > = details
-                                    .extras
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(i, _x)| {
-                                        if !all {
-                                            return to_down.contains(i);
-                                        } else {
-                                            return true;
-                                        }
-                                    })
-                                    .map(|(_i, x)| {
-                                        info!("Finding URL");
-                                        let mut url = "https://gog.com".to_string() + &x.manual_url;
-                                        let mut response;
-                                        loop {
-                                            let temp_response =
-                                                gog.client_noredirect.borrow().get(&url).send();
-                                            if temp_response.is_ok() {
-                                                response = temp_response.unwrap();
-                                                let headers = response.headers();
-                                                // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
-                                                if headers.contains_key("location") {
-                                                    url = headers
-                                                        .get("location")
-                                                        .unwrap()
-                                                        .to_str()
-                                                        .unwrap()
-                                                        .to_string();
-                                                } else {
-                                                    break;
-                                                }
-                                            } else {
-                                                return Err(temp_response.err().unwrap().into());
-                                            }
-                                        }
-                                        Ok(response)
-                                    })
-                                    .collect();
-                                for extra in extra_responses.into_iter() {
-                                    let mut extra = extra.expect("Couldn't fetch extra");
-                                    let mut real_response = gog
-                                        .client_noredirect
-                                        .borrow()
-                                        .get(extra.url().clone())
-                                        .send()
-                                        .expect("Couldn't fetch extra data");
-                                    let name = extra
-                                        .url()
-                                        .path_segments()
-                                        .unwrap()
-                                        .last()
-                                        .unwrap()
-                                        .to_string();
-                                    let n_path = folder_name.join(&name);
-                                    if fs::metadata(&n_path).is_ok() {
-                                        warn!("This extra has already been downloaded. Skipping.");
-                                        continue;
-                                    }
-                                    println!("Starting download of {}", name);
-                                    let pb = ProgressBar::new(extra.content_length().unwrap());
-                                    pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .progress_chars("#>-"));
-                                    let mut pb_read = pb.wrap_read(real_response);
-                                    let mut file =
-                                        File::create(n_path).expect("Couldn't create file");
-                                    io::copy(&mut pb_read, &mut file)
-                                        .expect("Couldn't copy to target file");
-                                    pb.finish();
-                                }
-                                std::process::exit(0);
-                            } else {
-                                println!("Please enter a valid number corresponding to an available download");
-                            }
-                        } else {
-                            println!(
-                                "Please enter a number corresponding to an available download"
-                            );
+                    let mut i = 0;
+                    if !first {
+                        let mut selects = Select::new();
+                        let mut select =
+                            selects.with_prompt("Select a game to download extras from:");
+                        for pd in e.iter() {
+                            select.item(format!("{} - {}", pd.title, pd.id).as_str());
                         }
+                        i = select.interact().unwrap();
+                    }
+                    info!("Fetching game details");
+                    let details = gog.get_game_details(e[i].id).unwrap();
+                    println!("Downloading extras for game {}", details.title);
+                    let folder_name = PathBuf::from(format!("{} Extras", details.title));
+                    if fs::metadata(&folder_name).is_err() {
+                        fs::create_dir(&folder_name).expect("Couldn't create extras folder");
+                    }
+                    let mut picked: Vec<usize> = vec![];
+                    if !all {
+                        let mut check = Checkboxes::new();
+                        let mut checks = check.with_prompt("Pick the extras you want to download");
+                        for ex in details.extras.iter() {
+                            checks.item(&ex.name);
+                        }
+                        picked = checks.interact().unwrap();
+                    }
+                    let extra_responses: Vec<Result<reqwest::Response, Error>> = details
+                        .extras
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _x)| {
+                            if !all {
+                                return picked.contains(i);
+                            } else {
+                                return true;
+                            }
+                        })
+                        .map(|(_i, x)| {
+                            info!("Finding URL");
+                            let mut url = "https://gog.com".to_string() + &x.manual_url;
+                            let mut response;
+                            loop {
+                                let temp_response = gog.client_noredirect.borrow().get(&url).send();
+                                if temp_response.is_ok() {
+                                    response = temp_response.unwrap();
+                                    let headers = response.headers();
+                                    // GOG appears to be inconsistent with returning either 301/302, so this just checks for a redirect location.
+                                    if headers.contains_key("location") {
+                                        url = headers
+                                            .get("location")
+                                            .unwrap()
+                                            .to_str()
+                                            .unwrap()
+                                            .to_string();
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    return Err(temp_response.err().unwrap().into());
+                                }
+                            }
+                            Ok(response)
+                        })
+                        .collect();
+                    for extra in extra_responses.into_iter() {
+                        let mut extra = extra.expect("Couldn't fetch extra");
+                        let mut real_response = gog
+                            .client_noredirect
+                            .borrow()
+                            .get(extra.url().clone())
+                            .send()
+                            .expect("Couldn't fetch extra data");
+                        let name = extra
+                            .url()
+                            .path_segments()
+                            .unwrap()
+                            .last()
+                            .unwrap()
+                            .to_string();
+                        let n_path = folder_name.join(&name);
+                        if fs::metadata(&n_path).is_ok() {
+                            warn!("This extra has already been downloaded. Skipping.");
+                            continue;
+                        }
+                        println!("Starting download of {}", name);
+                        let pb = ProgressBar::new(extra.content_length().unwrap());
+                        pb.set_style(ProgressStyle::default_bar()
+                                         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                                         .progress_chars("#>-"));
+                        let mut pb_read = pb.wrap_read(real_response);
+                        let mut file = File::create(n_path).expect("Couldn't create file");
+                        io::copy(&mut pb_read, &mut file).expect("Couldn't copy to target file");
+                        pb.finish();
                     }
                 } else {
                     error!("Could not search for games.")
@@ -401,9 +345,7 @@ fn parse_args(
                         let mut games = gog
                             .get_all_filtered_products(FilterParams::from_one(MediaType(1)))
                             .expect("Couldn't fetch games");
-                        games.sort_by(|a,b| {
-                                a.title.partial_cmp(&b.title).unwrap()
-                            });
+                        games.sort_by(|a, b| a.title.partial_cmp(&b.title).unwrap());
                         if options[pick] == "Download" {
                             let mut check = Checkboxes::new();
                             let mut picks = check.with_prompt("Select games to download");
@@ -445,6 +387,7 @@ fn parse_args(
                             let parsed = Wyvern::from_iter_safe(&vec![
                                 "wyvern",
                                 "extras",
+                                "--first",
                                 games[picked].title.as_str(),
                             ])
                             .unwrap();
@@ -1016,8 +959,8 @@ fn download(
                 .unwrap();
             let pb = ProgressBar::new(total_size);
             pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .progress_chars("#>-"));
+                         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                         .progress_chars("#>-"));
             let mut name = names[idx].clone();
             let url = response.url().clone();
             let final_name = url.path_segments().unwrap().last().unwrap().to_string();
