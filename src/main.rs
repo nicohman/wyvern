@@ -740,6 +740,12 @@ fn install(
         if let Ok(output) = output {
             if output.status.success() {
                 info!("innoextract successfully run");
+                if path.join("app").is_dir() {
+                    info!("Game is nested within app directory. Attempting to rename.");
+                    fs::rename(path.join("app"), "tmp").expect("Couldn't rename app folder");
+                    fs::remove_dir_all(&path).expect("Couldn't remove old folder");
+                    fs::rename("tmp", &path).expect("Couldn't rename tmp folder");
+                }
                 return;
             } else {
                 error!("Could not run innoextract. Are you sure it's installed and in $PATH?");
