@@ -18,7 +18,7 @@ The GitHub repo is a mirror of the main [sr.ht](https://git.sr.ht/~nicohman/wyve
 
 ## See it working
 
-![A gif showing wyvern working](https://thumbs.gfycat.com/BriefPettyCrab-size_restricted.gif)
+[![asciicast](https://asciinema.org/a/226434.svg)](https://asciinema.org/a/226434)
 
 ## Installation
 
