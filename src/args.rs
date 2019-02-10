@@ -182,7 +182,7 @@ pub struct ShortcutOptions {
 pub struct DownloadOptions {
     #[structopt(short = "i", long = "id", help = "download id")]
     pub id: Option<i64>,
-    #[structopt(short = "s", long = "search", help = "search manually")]
+    #[structopt(help = "search manually")]
     pub search: Option<String>,
     #[structopt(parse(from_os_str))]
     #[structopt(

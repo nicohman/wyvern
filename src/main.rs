@@ -129,44 +129,34 @@ fn parse_args(
                     info!("Game search results OK");
                     let e = search_results.unwrap().products;
                     if !options.first {
-                        for (idx, pd) in e.iter().enumerate() {
-                            println!("{}. {} - {}", idx, pd.title, pd.id);
-                        }
-                        let mut choice = String::new();
-                        loop {
-                            choice = String::new();
-                            print!("Select a game to download:");
-                            io::stdout().flush().unwrap();
-                            io::stdin().read_line(&mut choice).unwrap();
-                            let parsed = choice.trim().parse::<usize>();
-                            if let Ok(i) = parsed {
-                                if e.len() > i {
-                                    info!("Fetching game details");
-                                    let details = gog.get_game_details(e[i].id).unwrap();
-                                    let pname = details.title.clone();
-                                    info!("Beginning download process");
-                                    let (name, downloaded_windows) =
-                                        download_prep(&gog, details, &options).unwrap();
-                                    if options.install_after.is_some() {
-                                        println!("Installing game");
-                                        info!("Installing game");
-                                        install_all(
-                                            name,
-                                            options.install_after.unwrap(),
-                                            pname,
-                                            &shortcuts,
-                                            downloaded_windows,
-                                        );
-                                    }
-                                    break;
-                                } else {
-                                    println!("Please enter a valid number corresponding to an available download");
-                                }
-                            } else {
-                                println!(
-                                    "Please enter a number corresponding to an available download"
+                        if e.len() > 0 {
+                            let mut select = Select::new();
+                            let mut selects =
+                                select.with_prompt("Select a game to download:").default(0);
+                            for pd in e.iter() {
+                                selects.item(format!("{} - {}", pd.title, pd.id).as_str());
+                            }
+                            let i = selects.interact().expect("Couldn't pick game");
+                            info!("Fetching game details");
+                            let details = gog.get_game_details(e[i].id).unwrap();
+                            let pname = details.title.clone();
+                            info!("Beginning download process");
+                            let (name, downloaded_windows) =
+                                download_prep(&gog, details, &options).unwrap();
+                            if options.install_after.is_some() {
+                                println!("Installing game");
+                                info!("Installing game");
+                                install_all(
+                                    name,
+                                    options.install_after.unwrap(),
+                                    pname,
+                                    &shortcuts,
+                                    downloaded_windows,
                                 );
                             }
+                        } else {
+                            error!("Found no games when searching.");
+                            std::process::exit(64);
                         }
                     } else {
                         info!("Downloading first game from results");
