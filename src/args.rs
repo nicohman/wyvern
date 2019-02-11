@@ -72,7 +72,7 @@ pub enum Command {
     )]
     Sync(Sync),
     #[structopt(name = "int", alias = "interactive", about = "Enter interactive mode")]
-    Interactive
+    Interactive,
 }
 #[derive(StructOpt, Debug)]
 pub enum Sync {
@@ -217,4 +217,16 @@ pub struct DownloadOptions {
         help = "Don't preserve the original game name"
     )]
     pub original: bool,
+    #[structopt(parse(from_os_str))]
+    #[structopt(
+        short = "o",
+        long = "output",
+        help = "Write downloaded file to target location. Note: if the file already exists/multiple files are downloaded, appends a count to the end"
+    )]
+    pub output: Option<PathBuf>,
+    #[structopt(
+        long = "preserve-extension",
+        help = "When used with -o, preserves the original file extension"
+    )]
+    pub preserve_extension: bool,
 }

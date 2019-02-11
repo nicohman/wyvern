@@ -589,7 +589,6 @@ fn update(gog: &Gog, _path: PathBuf, game_info_path: PathBuf, dlc: bool) {
                         }
                         if file.compression_method == 8 {
                             info!("Decompressing file");
-
                             let def = inflate::inflate_bytes(bytes.as_slice()).unwrap();
                             info!("Writing decompressed file to disk");
                             fd.write_all(&def)
@@ -940,10 +939,39 @@ fn download(
             let mut name = names[idx].clone();
             let url = response.url().clone();
             let final_name = url.path_segments().unwrap().last().unwrap().to_string();
+            let final_name_path = PathBuf::from(&final_name);
             if options.original {
                 name = final_name;
-                names[idx] = name.clone();
             }
+            if let Some(output) = options.output.clone() {
+                if output.is_dir() {
+                    name = output
+                        .join(PathBuf::from(&name))
+                        .to_str()
+                        .unwrap()
+                        .to_string();
+                } else {
+                    name = output.to_str().unwrap().to_string();
+                }
+            }
+            if options.preserve_extension {
+                if let Some(extension) = final_name_path.extension() {
+                    name = name + "." + &extension.to_string_lossy().to_string();
+                }
+            }
+            let mut i = 1;
+            let mut name_path = PathBuf::from(&name);
+            let filename = name_path.file_name().unwrap().to_str().unwrap().to_string();
+            loop {
+                if name_path.exists() {
+                    info!("Current path exists. Incrementing tail, trying again");
+                    name_path.set_file_name(format!("{}_{}", filename, i));
+                } else {
+                    break;
+                }
+            }
+            name = name_path.to_str().unwrap().to_string();
+            names[idx] = name.clone();
             let temp_name = name.clone() + ".tmp";
             if options.resume {
                 if let Ok(mut meta) = fs::metadata(&temp_name) {

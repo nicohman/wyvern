@@ -19,7 +19,7 @@ tasks:
       mkdir wyvern/target/debug/knights
   - test : |
       cd wyvern/target/debug
-      ./wyvern down --search "Knights" --first
+      ./wyvern down "Knights" --first
       ./wyvern install gog_knights_of_pen_and_paper_1_edition_2.0.0.1.sh knights/
       echo "test" > knights/game/knightspp_Data/data.kopp
       ./wyvern sync saves knights knights/game/knightspp_Data/data.kopp --db ./game_dir
