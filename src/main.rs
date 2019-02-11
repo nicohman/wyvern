@@ -720,32 +720,21 @@ fn download_prep(
     } else {
         if !options.windows_auto && !options.windows_force {
             info!("Asking user about downloading windows version");
-            let mut choice = String::new();
-            loop {
-                choice = String::new();
-                print!("This game does not support linux! Would you like to download the windows version to run under wine?(y/n)");
-                io::stdout().flush().unwrap();
-                io::stdin().read_line(&mut choice).unwrap();
-                match choice.to_lowercase().trim() {
-                    "y" => {
-                        println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
-                        info!("Downloading windows downloads");
-                        let name;
-                        if options.dlc {
-                            info!("Downloading DLC as well");
-                            name = download(&gog, all_downloads(details, false), options).unwrap();
-                        } else {
-                            name =
-                                download(gog, details.downloads.windows.unwrap(), options).unwrap();
-                        }
-                        return Ok((name, true));
-                    }
-                    "n" => {
-                        println!("No suitable downloads found. Exiting");
-                        std::process::exit(0);
-                    }
-                    _ => println!("Please enter y or n to proceed."),
+            if Confirmation::new().with_text("This game does not support linux! Would you like to download the windows version to run under wine?").interact().unwrap() {
+                println!("Downloading windows files. Note: wyvern does not support automatic installation from windows games");
+                info!("Downloading windows downloads");
+                let name;
+                if options.dlc {
+                    info!("Downloading DLC as well");
+                    name = download(&gog, all_downloads(details, false), options).unwrap();
+                } else {
+                    name = download(gog, details.downloads.windows.unwrap(), options).unwrap();
                 }
+                return Ok((name, true));
+
+            } else {
+                error!("No suitable downloads found. Exiting");
+                std::process::exit(0);
             }
         } else {
             if !options.windows_force {
@@ -899,12 +888,9 @@ pub fn login() -> Token {
     println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
     println!("https://login.gog.com/auth?client_id=46899977096215655&layout=client2%22&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code");
     io::stdout().flush().unwrap();
-    let mut code = String::new();
     let token: Token;
     loop {
-        code = String::new();
-        info!("Atttempting to read input line for token");
-        io::stdin().read_line(&mut code).unwrap();
+        let code: String = Input::new().with_prompt("Code:").interact().unwrap();
         info!("Creating token from input");
         let attempt_token = Token::from_login_code(code.as_str());
         if attempt_token.is_ok() {
