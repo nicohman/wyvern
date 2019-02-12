@@ -91,13 +91,13 @@ fn parse_args(
             let mut games = GamesList { games: vec![] };
             if let Some(id) = id {
                 let details = gog.get_game_details(id).unwrap();
-                games.games.push((details.title.clone(), id));
+                games.games.push(Game::GameInfo(details, id));
             } else {
                 games.games = gog
                     .get_all_filtered_products(FilterParams::from_one(MediaType(1)))
                     .expect("Couldn't fetch games")
                     .into_iter()
-                    .map(|x| (x.title, x.id))
+                    .map(|x| Game::ProductInfo(x))
                     .collect();
             }
             if json {
@@ -107,9 +107,15 @@ fn parse_args(
                 );
             } else {
                 println!("Title - GameID");
-                games.games.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                for (title, id) in games.games {
-                    println!("{} - {}", title, id);
+                games
+                    .games
+                    .sort_by(|a, b| a.title().partial_cmp(&b.title()).unwrap());
+                for game in games.games {
+                    print!("{} - ", game.title());
+                    match game {
+                        Game::GameInfo(_details, id) => println!("{}", id),
+                        Game::ProductInfo(pinfo) => println!("{}", pinfo.id),
+                    }
                 }
             }
         }
@@ -988,5 +994,18 @@ impl Handler for WriteHandler {
 }
 #[derive(Serialize, Debug)]
 struct GamesList {
-    games: Vec<(String, i64)>,
+    games: Vec<Game>,
+}
+#[derive(Serialize, Debug)]
+enum Game {
+    ProductInfo(ProductDetails),
+    GameInfo(GameDetails, i64),
+}
+impl Game {
+    fn title(&self) -> String {
+        match self {
+            Game::ProductInfo(details) => details.title.clone(),
+            Game::GameInfo(details, _id) => details.title.clone(),
+        }
+    }
 }
