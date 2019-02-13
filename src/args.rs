@@ -55,6 +55,12 @@ pub enum Command {
         shortcuts: ShortcutOptions,
         #[structopt(short = "w", long = "windows", help = "Install a windows game")]
         windows: bool,
+        #[structopt(
+            short = "e",
+            long = "external-zip",
+            help = "Use the zip CLI tool to unzip the installer. Faster."
+        )]
+        external_zip: bool,
     },
     #[structopt(
         name = "update",
@@ -229,4 +235,10 @@ pub struct DownloadOptions {
         help = "When used with -o, preserves the original file extension"
     )]
     pub preserve_extension: bool,
+    #[structopt(
+        short = "e",
+        long = "external-zip",
+        help = "Use the zip CLI tool to unzip the installer. Faster."
+    )]
+    pub external_zip: bool,
 }

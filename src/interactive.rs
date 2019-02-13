@@ -1,14 +1,13 @@
+/// This module provides wyvern's interactive mode, which lets the user use wyvern through a text-based GUI instead of by running single commands
 use args::*;
-use connect::*;
 use crate::parse_args;
 use dialoguer::*;
-use gog::gog::connect::*;
 use gog::gog::FilterParam::*;
 use gog::gog::*;
 use gog::*;
 use std::fs;
 use structopt::StructOpt;
-pub fn interactive(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) -> Gog {
+pub fn interactive(gog: Gog, sync_saves: Option<String>) -> Gog {
     let options = ["List", "Download", "Extras", "Connect"];
     let mut gog = gog;
     loop {
@@ -41,7 +40,7 @@ pub fn interactive(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) -
                         if install {
                             args.push("--install");
                             args.push(games[g].title.as_str());
-                            if let Err(err) = fs::create_dir(&games[g].title) {
+                            if fs::create_dir(&games[g].title).is_err() {
                                 error!(
                                     "Could not make install directory named {}. Skipping.",
                                     games[g].title

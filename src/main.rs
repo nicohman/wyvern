@@ -20,6 +20,7 @@ extern crate inflate;
 extern crate rayon;
 extern crate serde;
 extern crate serde_json;
+extern crate walkdir;
 extern crate zip;
 mod args;
 mod config;
@@ -52,9 +53,10 @@ use std::io::Seek;
 use std::io::SeekFrom::*;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use structopt::StructOpt;
+use walkdir::WalkDir;
 fn main() -> Result<(), ::std::io::Error> {
     #[cfg(not(debug_assertions))]
     setup_panic!();
@@ -159,6 +161,7 @@ fn parse_args(
                                     pname,
                                     &shortcuts,
                                     downloaded_windows,
+                                    options.external_zip,
                                 );
                             }
                         } else {
@@ -181,6 +184,7 @@ fn parse_args(
                                 pname,
                                 &shortcuts,
                                 downloaded_windows,
+                                options.external_zip,
                             );
                         }
                     }
@@ -201,6 +205,7 @@ fn parse_args(
                         pname,
                         &shortcuts,
                         downloaded_windows,
+                        options.external_zip,
                     );
                 }
             } else if options.all {
@@ -329,13 +334,14 @@ fn parse_args(
             }
         }
         Interactive => {
-            gog = interactive::interactive(gog, sync_saves, args);
+            gog = interactive::interactive(gog, sync_saves);
         }
         Install {
             installer_name,
             path,
             mut shortcuts,
             windows,
+            external_zip,
         } => {
             if shortcuts.shortcuts {
                 shortcuts.desktop = true;
@@ -348,6 +354,7 @@ fn parse_args(
                 installer_name,
                 &shortcuts,
                 windows,
+                external_zip,
             );
         }
         #[cfg(feature = "eidolonint")]
@@ -598,6 +605,7 @@ fn install_all(
     name: String,
     shortcut_opts: &ShortcutOptions,
     windows: bool,
+    external_zip: bool,
 ) {
     for name in names
         .iter()
@@ -613,6 +621,7 @@ fn install_all(
                 shortcuts: false,
             },
             windows,
+            external_zip,
         );
     }
     shortcuts(&name, path.as_path(), shortcut_opts);
@@ -673,6 +682,7 @@ fn install(
     name: String,
     shortcut_opts: &ShortcutOptions,
     windows: bool,
+    external_zip: bool,
 ) {
     info!("Starting installer extraction process");
     if windows {
@@ -706,96 +716,162 @@ fn install(
             std::process::exit(64);
         }
     } else {
-        if let Ok(mut installer) = File::open(installer.into()) {
-            extract(
-                &mut installer,
-                "/tmp",
-                ToExtract {
-                    unpacker: false,
-                    mojosetup: false,
-                    data: true,
-                },
-            )
-            .unwrap();
-            info!("Opening extracted zip");
-            let file = File::open("/tmp/data.zip").unwrap();
-            // Extract code taken mostly from zip example
-            let archive = zip::ZipArchive::new(BufReader::new(file)).unwrap();
-            let len = archive.len();
-            let pb = ProgressBar::new(len as u64);
-            pb.set_style(
-                ProgressStyle::default_bar()
-                    .template(
-                        "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}",
-                    )
-                    .progress_chars("#>-"),
-            );
-            info!("Starting zip extraction process");
-            (0..len).into_par_iter().for_each(|i| {
-                info!("Starting extraction of file #{}. Opening archive", i);
-                let mut archive =
-                    zip::ZipArchive::new(BufReader::new(File::open("/tmp/data.zip").unwrap()))
-                        .unwrap();
-                info!("Getting file from archive");
-                let mut file = archive.by_index(i).unwrap();
-                let filtered_path = file
-                    .sanitized_name()
-                    .to_str()
-                    .unwrap()
-                    .replace("/noarch", "")
-                    .replace("data/", "")
-                    .to_owned();
-                //Extract only files for the game itself
-                if !filtered_path.contains("meta") && !filtered_path.contains("scripts") {
-                    let outpath = path.clone().join(PathBuf::from(filtered_path));
-                    if (&*file.name()).ends_with('/') {
-                        info!("Creating dir");
-                        fs::create_dir_all(&outpath).unwrap();
-                    } else {
-                        if let Some(p) = outpath.parent() {
-                            if !p.exists() {
-                                fs::create_dir_all(&p).unwrap();
+        if external_zip {
+            info!("Unzipping using unzip command");
+            if let Err(err) = fs::create_dir("tmp") {
+                warn!("Could not create temporary extract dir. Error: {:?}", err);
+            }
+            let output = Command::new("unzip")
+                .arg("-d")
+                .arg("tmp")
+                .arg("/tmp/data.zip")
+                .output();
+            if let Err(err) = output {
+                error!("Unzip command failed. Error: {:?}", err);
+            } else {
+                let output = output.unwrap();
+                if output.status.success() {
+                    info!("Unzip command succeeded. Beginning path processing.");
+                    for entry in WalkDir::new("tmp").into_iter().filter_map(|e| e.ok()) {
+                        let new_path = path
+                            .join(
+                                entry
+                                    .path()
+                                    .strip_prefix(Path::new("tmp"))
+                                    .expect("Couldn't strip path")
+                                    .to_str()
+                                    .unwrap()
+                                    .replace("/noarch", "")
+                                    .replace("data/", "")
+                                    .to_owned(),
+                            )
+                            .to_path_buf();
+                        let str_new = format!("{}", new_path.clone().to_str().unwrap());
+                        if !str_new.contains("meta") && !str_new.contains("scripts") {
+                            if str_new.ends_with("/") {
+                                info!("Creating dir");
+                                fs::create_dir_all(new_path).expect("Couldn't create directory");
+                            } else {
+                                if let Some(p) = new_path.as_path().parent() {
+                                    if !p.exists() {
+                                        fs::create_dir_all(&p)
+                                            .expect("Couldn't create parent directory!");
+                                    }
+                                }
+                                if entry.path().is_dir() {
+                                    fs::create_dir_all(new_path);
+                                } else {
+                                println!("{:?},{:?}",entry.path(),new_path);
+                                info!("Moving file");
+                                fs::rename(entry.path(), new_path.as_path())
+                                        .expect("Couldn't move file to proper directory");
+                                }
                             }
                         }
-                        info!("Creating file");
-                        let mut outfile = fs::File::create(&outpath).unwrap();
-                        info!("Copying to file");
-                        io::copy(&mut file, &mut outfile).unwrap();
                     }
-                    use std::os::unix::fs::PermissionsExt;
-                    if let Some(mode) = file.unix_mode() {
-                        info!("Setting permissions for file");
-                        fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
-                    }
+
+                    fs::remove_dir_all("tmp").expect("Could not remove temp directory");
                 } else {
-                    info!("File {} not being extracted", filtered_path);
-                }
-                pb.inc(1);
-            });
-            pb.finish_with_message("Game installed!");
-            #[cfg(feature = "eidolonint")]
-            {
-                if !windows {
-                    info!("Compiled with eidolon integration. Adding game to registry");
-                    use libeidolon::games::*;
-                    use libeidolon::helper::*;
-                    use libeidolon::*;
-                    let proc_name = create_procname(name.clone());
-                    info!("Creating game object");
-                    let game = Game {
-                        name: proc_name,
-                        pname: name,
-                        command: current_dir().unwrap().to_str().unwrap().to_string(),
-                        typeg: GameType::WyvernGOG,
-                    };
-                    info!("Adding game to eidolon");
-                    add_game(game);
-                    println!("Added game to eidolon registry!");
+                    error!(
+                        "Unzip command failed.\n Stdout: {:?}\n Stderr: {:?}",
+                        output.stdout, output.stderr
+                    );
                 }
             }
-            shortcuts(&name, path.as_path(), shortcut_opts);
         } else {
-            error!("Could not open installer file");
+            if let Ok(mut installer) = File::open(installer.into()) {
+                extract(
+                    &mut installer,
+                    "/tmp",
+                    ToExtract {
+                        unpacker: false,
+                        mojosetup: false,
+                        data: true,
+                    },
+                )
+                .unwrap();
+                info!("Opening extracted zip");
+                let file = File::open("/tmp/data.zip").unwrap();
+                // Extract code taken mostly from zip example
+                let archive = zip::ZipArchive::new(BufReader::new(file)).unwrap();
+                let len = archive.len();
+                let pb = ProgressBar::new(len as u64);
+                pb.set_style(
+                    ProgressStyle::default_bar()
+                        .template(
+                            "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len}",
+                        )
+                        .progress_chars("#>-"),
+                );
+                info!("Starting zip extraction process");
+                (0..len).into_par_iter().for_each(|i| {
+                    info!("Starting extraction of file #{}. Opening archive", i);
+                    let mut archive =
+                        zip::ZipArchive::new(BufReader::new(File::open("/tmp/data.zip").unwrap()))
+                            .unwrap();
+                    info!("Getting file from archive");
+                    let mut file = archive.by_index(i).unwrap();
+                    let filtered_path = file
+                        .sanitized_name()
+                        .to_str()
+                        .unwrap()
+                        .replace("/noarch", "")
+                        .replace("data/", "")
+                        .to_owned();
+                    //Extract only files for the game itself
+                    if !filtered_path.contains("meta") && !filtered_path.contains("scripts") {
+                        let outpath = path.clone().join(PathBuf::from(filtered_path));
+                        if (&*file.name()).ends_with('/') {
+                            info!("Creating dir");
+                            fs::create_dir_all(&outpath).unwrap();
+                        } else {
+                            if let Some(p) = outpath.parent() {
+                                if !p.exists() {
+                                    fs::create_dir_all(&p).unwrap();
+                                }
+                            }
+                            info!("Creating file");
+                            let mut outfile = fs::File::create(&outpath).unwrap();
+                            info!("Copying to file");
+                            io::copy(&mut file, &mut outfile).unwrap();
+                        }
+                        use std::os::unix::fs::PermissionsExt;
+                        if let Some(mode) = file.unix_mode() {
+                            info!("Setting permissions for file");
+                            fs::set_permissions(&outpath, fs::Permissions::from_mode(mode))
+                                .unwrap();
+                        }
+                    } else {
+                        info!("File {} not being extracted", filtered_path);
+                    }
+                    pb.inc(1);
+                });
+                pb.finish_with_message("Game installed!");
+                shortcuts(&name, path.as_path(), shortcut_opts);
+            } else {
+                error!("Could not open installer file");
+                return;
+            }
+        }
+    }
+    #[cfg(feature = "eidolonint")]
+    {
+        if !windows {
+            info!("Compiled with eidolon integration. Adding game to registry");
+            use libeidolon::games::*;
+            use libeidolon::helper::*;
+            use libeidolon::*;
+            let proc_name = create_procname(name.clone());
+            info!("Creating game object");
+            let game = Game {
+                name: proc_name,
+                pname: name,
+                command: current_dir().unwrap().to_str().unwrap().to_string(),
+                typeg: GameType::WyvernGOG,
+            };
+            info!("Adding game to eidolon");
+            add_game(game);
+            println!("Added game to eidolon registry!");
         }
     }
 }
