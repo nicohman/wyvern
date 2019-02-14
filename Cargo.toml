@@ -33,5 +33,5 @@ crc = "1.8.1"
 inflate = "0.4.4"
 reqwest = "0.9.9"
 curl = "0.4"
-dialoguer = "0.3"
+dialoguer = { path = "src/dialoguer" }
 walkdir = "2"

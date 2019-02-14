@@ -25,7 +25,7 @@ pub fn interactive(gog: Gog, sync_saves: Option<String>) -> Gog {
                 games.sort_by(|a, b| a.title.partial_cmp(&b.title).unwrap());
                 if options[pick] == "Download" {
                     let mut check = Checkboxes::new();
-                    let mut picks = check.with_prompt("Select games to download");
+                    let mut picks = check.with_prompt("Select games to download").paged(true);
                     for g in games.iter() {
                         picks.item(g.title.as_str());
                     }
@@ -52,10 +52,10 @@ pub fn interactive(gog: Gog, sync_saves: Option<String>) -> Gog {
                         gog = parse_args(parsed, gog, sync_saves.clone()).unwrap();
                     }
                 } else
-                /* Extras */
+                // Extras
                 {
                     let mut select = Select::new();
-                    let mut pick = select.with_prompt("Select game to download extras from");
+                    let mut pick = select.with_prompt("Select game to download extras from").paged(true);
                     for g in games.iter() {
                         pick.item(g.title.as_str());
                     }
