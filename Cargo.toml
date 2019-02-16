@@ -35,3 +35,4 @@ reqwest = "0.9.9"
 curl = "0.4"
 dialoguer = { path = "src/dialoguer" }
 walkdir = "2"
+url = "1.7.2"

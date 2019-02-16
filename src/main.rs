@@ -21,6 +21,7 @@ extern crate rayon;
 extern crate serde;
 extern crate serde_json;
 extern crate walkdir;
+extern crate url;
 extern crate zip;
 mod args;
 mod config;
@@ -930,7 +931,8 @@ fn download(
                          .progress_chars("#>-"));
             let mut name = names[idx].clone();
             let url = response.url().clone();
-            let final_name = url.path_segments().unwrap().last().unwrap().to_string();
+            let final_name_encoded = url.path_segments().unwrap().last().unwrap().to_string();
+            let final_name = url::percent_encoding::percent_decode(&final_name_encoded.as_bytes()).decode_utf8().unwrap().to_string();
             let final_name_path = PathBuf::from(&final_name);
             if options.original {
                 name = final_name;
