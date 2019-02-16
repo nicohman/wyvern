@@ -1,6 +1,6 @@
 [package]
 name = "wyvern"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["nicohman <nicohman@demenses.net>"]
 license="GPL-3.0"
 repository="https://git.sr.ht/~nicohman/wyvern"
@@ -33,5 +33,5 @@ crc = "1.8.1"
 inflate = "0.4.4"
 reqwest = "0.9.9"
 curl = "0.4"
-dialoguer = { path = "src/dialoguer" }
+dialoguer = { path = "src/dialoguer", version = "0.3.1" }
 walkdir = "2"
