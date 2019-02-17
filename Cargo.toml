@@ -10,6 +10,9 @@ keywords=["gog", "games", "gaming"]
 categories=["games","command-line-interface"]
 [features]
 eidolonint = ["eidolon"]
+[lib]
+name = "dialoguer"
+path = "src/dialoguer/src/lib.rs"
 [[bin]]
 name = "wyvern"
 path = "src/main.rs"
@@ -33,6 +36,8 @@ crc = "1.8.1"
 inflate = "0.4.4"
 reqwest = "0.9.9"
 curl = "0.4"
-dialoguer = { path = "src/dialoguer" }
 walkdir = "2"
 url = "1.7.2"
+console = ">=0.3.0, <1.0.0"
+lazy_static = "1"
+tempfile = "2"
