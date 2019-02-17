@@ -1,3 +1,0 @@
-[submodule "src/dialoguer"]
-	path = src/dialoguer
-	url = https://github.com/nicohman/dialoguer
