@@ -4,12 +4,12 @@ use config::*;
 use gog::gog::FilterParam::*;
 use gog::gog::*;
 use gog::*;
-use parse_gameinfo;
 use std::env::current_dir;
 use std::fs::{self, File};
 use std::io::{self, *};
 use std::path::*;
 use std::process::*;
+/// Parses args, assuming a sync subcommand
 pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) -> Gog {
     match args.command {
         Sync(Push { game_dir, sync_to }) => {
@@ -26,7 +26,8 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) ->
                     info!("Reading from gameinfo file");
                     gameinfo.unwrap().read_to_string(&mut ginfo_string).unwrap();
                     info!("Parsing gameinfo");
-                    let gameinfo = parse_gameinfo(ginfo_string);
+                    let gameinfo =
+                        GameInfo::parse(ginfo_string).expect("Couldn't parse gameinfo file");
                     info!("Fetching details about game from GOG");
                     if let Ok(details) =
                         gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
@@ -121,7 +122,8 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) ->
                         .read_to_string(&mut ginfo_string)
                         .expect("Couldn't read from gameinfo file.");
                     info!("Parsing gameinfo file");
-                    let gameinfo = parse_gameinfo(ginfo_string);
+                    let gameinfo =
+                        GameInfo::parse(ginfo_string).expect("Couldn't parse gameinfo file");
                     if let Ok(details) =
                         gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
                     {
@@ -257,7 +259,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) ->
                     .unwrap()
                     .read_to_string(&mut ginfo_string)
                     .unwrap();
-                let gameinfo = parse_gameinfo(ginfo_string);
+                let gameinfo = GameInfo::parse(ginfo_string).expect("Couldn't parse gameinfo");
                 if let Ok(details) =
                     gog.get_products(FilterParams::from_one(Search(gameinfo.name.clone())))
                 {
@@ -288,6 +290,7 @@ pub fn parse_args(gog: Gog, sync_saves: Option<String>, args: ::args::Wyvern) ->
     };
     gog
 }
+/// Syncs save files from one location to another
 fn sync(sync_from: PathBuf, sync_to: PathBuf, ignore_older: bool, force: bool) {
     let from_meta = fs::metadata(&sync_from);
     let to_meta = fs::metadata(&sync_to);

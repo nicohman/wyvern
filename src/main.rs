@@ -55,6 +55,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use structopt::StructOpt;
 use walkdir::WalkDir;
+use {download::*, install::*, update::*};
 fn main() -> Result<(), ::std::io::Error> {
     #[cfg(not(debug_assertions))]
     setup_panic!();
