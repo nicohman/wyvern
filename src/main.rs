@@ -61,11 +61,21 @@ fn main() -> Result<(), ::std::io::Error> {
     setup_panic!();
     let mut config: Config = confy::load("wyvern")?;
     let args = Wyvern::from_args();
+    args.verbose
+        .setup_env_logger("wyvern")
+        .expect("Couldn't set up logger");
     if config.token.is_none() {
         let token = login();
         config.token = Some(token);
     }
-    config.token = Some(config.token.unwrap().refresh().unwrap());
+    let token_try = config.token.unwrap().refresh();
+    if token_try.is_err() {
+        error!("Could not refresh token. You may need to log in again.");
+        let token = login();
+        config.token = Some(token);
+    } else {
+        config.token = Some(token_try.unwrap());
+    }
     let gog = Gog::new(config.token.clone().unwrap());
     let mut sync_saves = config.sync_saves.clone();
     if sync_saves.is_some() {
@@ -75,9 +85,6 @@ fn main() -> Result<(), ::std::io::Error> {
                 .replace("~", dirs::home_dir().unwrap().to_str().unwrap()),
         );
     }
-    args.verbose
-        .setup_env_logger("wyvern")
-        .expect("Couldn't set up logger");
     confy::store("wyvern", config)?;
     parse_args(args, gog, sync_saves)?;
     Ok(())
