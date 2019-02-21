@@ -1,0 +1,24 @@
+name: wyvern
+base: core18
+version: git
+summary: Commandline gog downloader client
+description: Command-line tool written in rust that is meant to make downloading GOG games and associated activities easier and faster on linux.
+
+grade: stable
+confinement: strict
+
+apps:
+  wyvern:
+    command: wyvern
+    plugs: [ network, home ]
+
+parts:
+  wyvern:
+    plugin: rust
+    source: .
+    build-packages:
+      - build-essential
+      - libssl-dev
+      - pkg-config
+    stage-packages:
+      - libssl1.0.0
