@@ -36,7 +36,10 @@ cargo install --path . --force
 
 ```
 
-Plus, it's available on the AUR as [wyvern](https://aur.archlinux.org/packages/wyvern), helpfully maintained by [@PinkCathodeCat@cathoderay.tube](https://cathoderay.tube/users/PinkCathodeCat).
+Plus, it's available on the AUR as
+[wyvern](https://aur.archlinux.org/packages/wyvern), helpfully maintained by
+[@PinkCathodeCat@cathoderay.tube](https://cathoderay.tube/users/PinkCathodeCat).
+In addition, you can install it as a snap [from snapcraft.io](https://snapcraft.io/wyvern).
 
 ### Dependencies
 
