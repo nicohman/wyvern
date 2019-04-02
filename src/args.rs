@@ -29,6 +29,8 @@ pub enum Command {
         all: bool,
         #[structopt(short = "f", long = "first", help = "Download the first search result")]
         first: bool,
+        #[structopt(short = "i", long = "id", help = "Download a game's extras by id")]
+        id: Option<i64>,
         game: Option<String>,
     },
     #[derive(Default)]
