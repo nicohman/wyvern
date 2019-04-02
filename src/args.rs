@@ -31,6 +31,9 @@ pub enum Command {
         first: bool,
         #[structopt(short = "i", long = "id", help = "Download a game's extras by id")]
         id: Option<i64>,
+        #[structopt(parse(from_os_str))]
+        #[structopt(short = "o", long = "output-folder", help = "Name of folder to output extras to")]
+        output: Option<PathBuf>,
         game: Option<String>,
     },
     #[derive(Default)]

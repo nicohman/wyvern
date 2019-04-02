@@ -234,6 +234,7 @@ fn parse_args(
             all,
             first,
             id,
+            output
         } => {
             let mut details: GameDetails;
             if let Some(search) = game {
@@ -276,7 +277,10 @@ fn parse_args(
                 return Ok(gog);
             }
             println!("Downloading extras for game {}", details.title);
-            let folder_name = PathBuf::from(format!("{} Extras", details.title));
+            let mut folder_name = PathBuf::from(format!("{} Extras", details.title));
+            if let Some(output) = output {
+                folder_name = output;
+            }
             if fs::metadata(&folder_name).is_err() {
                 fs::create_dir(&folder_name).expect("Couldn't create extras folder");
             }
