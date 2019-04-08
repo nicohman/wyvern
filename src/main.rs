@@ -229,7 +229,12 @@ fn parse_args(
                 error!("Did not specify a game to download. Exiting.");
             }
         }
-        Extras { game, all, first } => {
+        Extras {
+            game,
+            all,
+            first,
+            slug,
+        } => {
             if let Some(search) = game {
                 if let Ok(results) =
                     gog.get_filtered_products(FilterParams::from_one(Search(search.clone())))
@@ -256,6 +261,17 @@ fn parse_args(
                         fs::create_dir(&folder_name).expect("Couldn't create extras folder");
                     }
                     let mut picked: Vec<usize> = vec![];
+                    if let Some(slug) = slug {
+                        details.extras.iter().enumerate().for_each(|(i, x)| {
+                            if x.name.trim() == slug.trim() {
+                                picked.push(i);
+                            }
+                        });
+                        if picked.len() == 0 {
+                            error!("Couldn't find an extra named {}", slug);
+                            return Ok(gog);
+                        }
+                    }
                     if !all {
                         let mut check = Checkboxes::new();
                         let mut checks = check.with_prompt("Pick the extras you want to download");

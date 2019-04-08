@@ -30,6 +30,8 @@ pub enum Command {
         #[structopt(short = "f", long = "first", help = "Download the first search result")]
         first: bool,
         game: Option<String>,
+        #[structopt(short = "s", long = "slug", help =  "Download a single extra by slug name")]
+        slug: Option<String>
     },
     #[derive(Default)]
     #[cfg(feature = "eidolonint")]
