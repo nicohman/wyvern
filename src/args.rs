@@ -35,6 +35,8 @@ pub enum Command {
         #[structopt(short = "o", long = "output-folder", help = "Name of folder to output extras to")]
         output: Option<PathBuf>,
         game: Option<String>,
+        #[structopt(short = "s", long = "slug", help =  "Download a single extra by slug name")]
+        slug: Option<String>
     },
     #[derive(Default)]
     #[cfg(feature = "eidolonint")]

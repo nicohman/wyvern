@@ -233,8 +233,9 @@ fn parse_args(
             game,
             all,
             first,
+            slug,
             id,
-            output
+            output,
         } => {
             let mut details: GameDetails;
             if let Some(search) = game {
@@ -256,7 +257,6 @@ fn parse_args(
                         i = select.interact().unwrap();
                     }
                     info!("Fetching game details");
-
                     details = gog.get_game_details(e[i].id).unwrap();
                 } else {
                     error!("Could not search for games.");
@@ -285,7 +285,7 @@ fn parse_args(
                 fs::create_dir(&folder_name).expect("Couldn't create extras folder");
             }
             let mut picked: Vec<usize> = vec![];
-            if !all {
+            if !all && slug.is_none() {
                 let mut check = Checkboxes::new();
                 let mut checks = check.with_prompt("Pick the extras you want to download");
                 for ex in details.extras.iter() {
@@ -293,6 +293,18 @@ fn parse_args(
                 }
                 picked = checks.interact().unwrap();
             }
+            if let Some(slug) = slug {
+                details.extras.iter().enumerate().for_each(|(i, x)| {
+                    if x.name.trim() == slug.trim() {
+                        picked.push(i);
+                    }
+                });
+                if picked.len() == 0 {
+                    error!("Couldn't find an extra named {}", slug);
+                    return Ok(gog);
+                }
+            }
+
             let extra_responses: Vec<Result<reqwest::Response, Error>> = details
                 .extras
                 .iter()
