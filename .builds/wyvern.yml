@@ -33,6 +33,6 @@ tasks:
   - deploy: |
       cd wyvern/target/release
       sshopts="ssh -o StrictHostKeyChecking=no"
-      rsync --rsh="$sshopts" -rP wyvern $deploy:/home/nicohman/ravenserver/public/static/wyvern-nightly
+      rsync --rsh="$sshopts" -rP wyvern $deploy:/home/nicohman/ravenserver-rs/static/wyvern-nightly
 triggers:
 - {action: email, condition: failure, to: Nico Hickman <nicohman@demenses.net>}

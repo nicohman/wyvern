@@ -1,0 +1,14 @@
+image: archlinux
+secrets:
+  - dcfce43c-8472-4e5d-89f8-319e9ff7cb1c
+  - 89991b16-705b-4276-9178-bfc81c7fdd28
+environment:
+  deploy: nicohman@demenses.net
+sources:
+  - https://git.sr.ht/~nicohman/wyvern
+tasks:
+  - deploy: |
+      sshopts="ssh -o StrictHostKeyChecking=no"
+      $sshopts $deploy /home/nicohman/update_wyvern_arm.sh
+triggers:
+- {action: email, condition: failure, to: Nico Hickman <nicohman@demenses.net>}
