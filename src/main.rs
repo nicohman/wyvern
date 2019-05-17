@@ -35,13 +35,13 @@ use args::Wyvern;
 use args::{DownloadOptions, ShortcutOptions};
 use config::*;
 use crc::crc32;
-use curl::easy::{Handler, WriteError};
 use dialoguer::*;
 use games::*;
 use gog::extract::*;
 use gog::gog::{FilterParam::*, *};
 use gog::token::Token;
 use gog::Error;
+use gog::ErrorKind::*;
 use gog::Gog;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env::current_dir;
@@ -435,23 +435,77 @@ fn parse_args(
     Ok(gog)
 }
 pub fn login() -> Token {
-    println!("It appears that you have not logged into GOG. Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
-    println!("https://login.gog.com/auth?client_id=46899977096215655&layout=client2%22&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code");
-    io::stdout().flush().unwrap();
-    let token: Token;
-    loop {
-        let code: String = Input::new().with_prompt("Code:").interact().unwrap();
-        info!("Creating token from input");
-        let attempt_token = Token::from_login_code(code.as_str());
-        if attempt_token.is_ok() {
-            token = attempt_token.unwrap();
-            println!("Got token. Thanks!");
-            break;
-        } else {
-            println!("Invalid code. Try again!");
+    let choices = ["OAuth Token Login", "Username/Password Login"];
+    println!("It appears that you have not logged into GOG. Please pick a login method.");
+    let pick = Select::new()
+        .with_prompt("Login Method")
+        .items(&choices)
+        .interact()
+        .expect("Couldn't pick a login method");
+    match pick {
+        //OAuth Token
+        0 => {
+            println!("Please go to the following URL, log into GOG, and paste the code from the resulting url's ?code parameter into the input here.");
+            println!("https://login.gog.com/auth?client_id=46899977096215655&layout=client2%22&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code");
+            io::stdout().flush().unwrap();
+            let token: Token;
+            loop {
+                let code: String = Input::new().with_prompt("Code:").interact().unwrap();
+                info!("Creating token from input");
+                let attempt_token = Token::from_login_code(code.as_str());
+                if attempt_token.is_ok() {
+                    token = attempt_token.unwrap();
+                    println!("Got token. Thanks!");
+                    break;
+                } else {
+                    println!("Invalid code. Try again!");
+                }
+            }
+            return token;
         }
-    }
-    token
+        1 => {
+            println!("Please input your credentials.");
+            let username: String = Input::new()
+                .with_prompt("Email")
+                .interact()
+                .expect("Couldn't fetch username");
+            let password: String = PasswordInput::new()
+                .with_prompt("Password")
+                .interact()
+                .expect("Couldn't fetch password");
+            let token = Token::login(
+                username,
+                password,
+                Some(|| {
+                    println!("A two factor authentication code is required. Please check your email for one and enter it here.");
+                    let mut token: String;
+                    loop {
+                        token = Input::new().with_prompt("2FA Code:").interact().unwrap();
+                        token = token.trim().to_string();
+                        if token.len() == 4 && token.parse::<i64>().is_ok() {
+                            break;
+                        }
+                    }
+                    token
+                }),
+            );
+            if token.is_err() {
+                error!("Could not login to GOG.");
+                let err = token.err().unwrap();
+                match err.kind() {
+                    IncorrectCredentials => error!("Wrong email or password"),
+                    NotAvailable => error!("You've triggered the captcha. 5 tries every 24 hours is allowed before the captcha is triggered. You should probably use the alternate login method or wait 24 hours"),
+                    _ => error!("Error: {:?}", err),
+                };
+            } else {
+                return token.unwrap();
+            }
+        }
+        _ => {
+            panic!("Please tell somebody about this.");
+        }
+    };
+    std::process::exit(64);
 }
 fn shortcuts(name: &String, path: &std::path::Path, shortcut_opts: &ShortcutOptions) {
     if shortcut_opts.menu || shortcut_opts.desktop {
