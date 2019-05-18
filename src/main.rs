@@ -493,7 +493,7 @@ pub fn login() -> Token {
                 error!("Could not login to GOG.");
                 let err = token.err().unwrap();
                 match err.kind() {
-                    IncorrectCredentials => error!("Wrong email or password"),
+                    IncorrectCredentials => error!("Wrong email or password. Sometimes this fails because GOG's login form can be inconsistent, so you may just need to try again."),
                     NotAvailable => error!("You've triggered the captcha. 5 tries every 24 hours is allowed before the captcha is triggered. You should probably use the alternate login method or wait 24 hours"),
                     _ => error!("Error: {:?}", err),
                 };
