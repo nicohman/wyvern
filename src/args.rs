@@ -86,6 +86,15 @@ pub enum Command {
     Sync(Sync),
     #[structopt(name = "int", alias = "interactive", about = "Enter interactive mode")]
     Interactive,
+    #[structopt(name = "login", about = "Force a login to GOG")]
+    Login {
+        #[structopt(short = "u", long = "username", help = "Username to log in with")]
+        username: Option<String>,
+        #[structopt(short = "p", long = "password", help = "Password to log in with")]
+        password: Option<String>,
+        #[structopt(short = "c", long = "code", help = "Use a login code to log in")]
+        code: Option<String>
+    }
 }
 #[derive(StructOpt, Debug)]
 pub enum Sync {

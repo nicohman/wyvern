@@ -64,6 +64,60 @@ fn main() -> Result<(), ::std::io::Error> {
     args.verbose
         .setup_env_logger("wyvern")
         .expect("Couldn't set up logger");
+    match args.command {
+        Login {
+            code,
+            username,
+            password,
+        } => {
+            let mut config: Config = confy::load("wyvern")?;
+            if let Some(code) = code {
+                if let Ok(token) = Token::from_login_code(code) {
+                    config.token = Some(token);
+                } else {
+                    error!("Could not login with code");
+                }
+            } else if let Some(username) = username {
+                let password = password.unwrap_or_else(|| {
+                    let pword: String = PasswordInput::new()
+                        .with_prompt("Password")
+                        .interact()
+                        .unwrap();
+                    return pword;
+                });
+                let token = Token::login(
+                    username,
+                    password,
+                    Some(|| {
+                        println!("A two factor authentication code is required. Please check your email for one and enter it here.");
+                        let mut token: String;
+                        loop {
+                            token = Input::new().with_prompt("2FA Code:").interact().unwrap();
+                            token = token.trim().to_string();
+                            if token.len() == 4 && token.parse::<i64>().is_ok() {
+                                break;
+                            }
+                        }
+                        token
+                    }),
+                );
+                if token.is_err() {
+                    error!("Could not login to GOG.");
+                    let err = token.err().unwrap();
+                    match err.kind() {
+                    IncorrectCredentials => error!("Wrong email or password. Sometimes this fails because GOG's login form can be inconsistent, so you may just need to try again."),
+                    NotAvailable => error!("You've triggered the captcha. 5 tries every 24 hours is allowed before the captcha is triggered. You should probably use the alternate login method or wait 24 hours"),
+                    _ => error!("Error: {:?}", err),
+                };
+                }
+            } else {
+                config.token = Some(login());
+            }
+            confy::store("wyvern", config)?;
+            ::std::process::exit(0);
+        }
+        _ => {}
+    }
     if config.token.is_none() {
         let token = login();
         config.token = Some(token);
@@ -229,6 +283,7 @@ fn parse_args(
                 error!("Did not specify a game to download. Exiting.");
             }
         }
+        Login  {..} => {}
         Extras {
             game,
             all,
