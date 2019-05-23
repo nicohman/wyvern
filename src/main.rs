@@ -109,6 +109,8 @@ fn main() -> Result<(), ::std::io::Error> {
                     NotAvailable => error!("You've triggered the captcha. 5 tries every 24 hours is allowed before the captcha is triggered. You should probably use the alternate login method or wait 24 hours"),
                     _ => error!("Error: {:?}", err),
                 };
+                } else {
+                    config.token = Some(token.unwrap());
                 }
             } else {
                 config.token = Some(login());
