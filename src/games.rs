@@ -217,6 +217,10 @@ pub mod download {
         info!("Getting responses to requests");
         let count = downloads.len();
         for idx in 0..count {
+            let ref tok = gog.token.borrow();
+            if tok.is_expired() {
+                let gog = Gog::new(tok.refresh()?);
+            }
             let mut responses = gog.download_game(vec![downloads[idx].clone()]);
             let mut response = responses.remove(0);
             if response.is_err() {
@@ -269,13 +273,9 @@ pub mod download {
                 let mut i = 1;
                 let mut name_path = PathBuf::from(&name);
                 let filename = name_path.file_name().unwrap().to_str().unwrap().to_string();
-                loop {
-                    if name_path.exists() {
-                        info!("Current path exists. Incrementing tail, trying again");
-                        name_path.set_file_name(format!("{}_{}", filename, i));
-                    } else {
-                        break;
-                    }
+                if name_path.exists() {
+                    error!("A file named {} already exists. Skipping this file.", filename);
+                    continue;
                 }
                 name = name_path.to_str().unwrap().to_string();
                 names[idx] = name.clone();
