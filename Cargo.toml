@@ -1,6 +1,6 @@
 [package]
 name = "wyvern"
-version = "1.4.0"
+version = "1.4.1"
 authors = ["nicohman <nicohman@demenses.net>"]
 license="GPL-3.0"
 repository="https://git.sr.ht/~nicohman/wyvern"
@@ -21,7 +21,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 human-panic = "1.0.1"
 confy = "0.3.1"
-gog = "0.3.4" 
+gog = "0.4.0" 
 indicatif = "0.10.3"
 zip = "0.5"
 eidolon = { version = "1.4.6", optional = true }
